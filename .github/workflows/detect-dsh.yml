@@ -1,0 +1,39 @@
+name: Detect upstream dsh rc
+
+on:
+  schedule:
+    - cron: "17 */2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.detect.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - id: detect
+        run: |
+          ver="$(bash scripts/latest-dsh-rc.sh)"
+          echo "version=${ver}" >> "$GITHUB_OUTPUT"
+          if [ -n "$ver" ]; then
+            echo "new rc: $ver"
+          else
+            echo "no newer rc on npm"
+          fi
+
+  release:
+    needs: detect
+    if: needs.detect.outputs.version != ''
+    uses: ./.github/workflows/release.yml
+    with:
+      version: ${{ needs.detect.outputs.version }}
+    permissions:
+      contents: write

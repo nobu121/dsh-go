@@ -1,0 +1,7 @@
+/dsh-go
+/wails-dsh
+/bin/
+/vendor/dsh/
+dsh-home/
+.DS_Store
+.task/

@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: dsh / product version (empty = dsh.version)
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  UPDATE_REPO: ${{ github.repository }}
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            asset: dsh-go-darwin-arm64.zip
+          - os: windows-latest
+            asset: dsh-go-windows-amd64.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Pin version
+        shell: bash
+        run: |
+          ver="${{ inputs.version }}"
+          if [ -z "$ver" ]; then
+            ver="$(tr -d '[:space:]' < dsh.version)"
+          fi
+          printf '%s\n' "$ver" > dsh.version
+          echo "APP_VERSION=$ver" >> "$GITHUB_ENV"
+      - name: Sync bundled dsh
+        shell: bash
+        run: bash scripts/sync-dsh.sh
+      - name: Smoke bundled runtime
+        shell: bash
+        run: bash scripts/smoke-dsh.sh
+      - name: Install wails3
+        shell: bash
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.16
+      - name: Package updater zip
+        shell: bash
+        run: wails3 task package:update-zip APP_VERSION="$APP_VERSION" UPDATE_REPO="$UPDATE_REPO"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: bin/${{ matrix.asset }}
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum dsh-go-*.zip > SHA256SUMS
+          cat SHA256SUMS
+      - name: Publish GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          ver="$VERSION"
+          if [ -z "$ver" ]; then
+            ver="$(tr -d '[:space:]' < dsh.version)"
+          fi
+          tag="v${ver}"
+          notes="Bundled DeepSeek Harness ${ver}."
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/dsh-go-*.zip dist/SHA256SUMS --clobber
+          else
+            gh release create "$tag" dist/dsh-go-*.zip dist/SHA256SUMS \
+              --title "$tag" \
+              --notes "$notes" \
+              --prerelease
+          fi
+      - name: Commit dsh.version
+        if: inputs.version != ''
+        run: |
+          ver="${{ inputs.version }}"
+          printf '%s\n' "$ver" > dsh.version
+          git add dsh.version
+          git diff --cached --quiet && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Bump bundled dsh to ${ver}"
+          git push

@@ -1,0 +1,15 @@
+{
+	"fixed": {
+		"file_version": "0.1.2"
+	},
+	"info": {
+		"0000": {
+			"ProductVersion": "0.1.2-rc.1",
+			"CompanyName": "dsh-go",
+			"FileDescription": "A Wails v3 desktop shell for DeepSeek Harness",
+			"LegalCopyright": "© 2026, dsh-go",
+			"ProductName": "dsh-go",
+			"Comments": "DeepSeek Harness desktop shell"
+		}
+	}
+}
