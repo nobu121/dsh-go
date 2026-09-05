@@ -1,5 +1,7 @@
 /dsh-go
+/dsh-go.exe
 /wails-dsh
+*.syso
 /bin/
 /vendor/dsh/
 dsh-home/

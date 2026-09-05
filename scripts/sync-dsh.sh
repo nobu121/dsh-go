@@ -71,4 +71,5 @@ if [[ ! -f "$DEST/node_modules/@deepseek-ai/dsh/lib/bin.js" ]]; then
 fi
 
 printf '%s\n' "$PIN" > "$DEST/VERSION"
+bash "$ROOT/scripts/prune-dsh.sh" "$DEST"
 echo "runtime ready at $DEST"

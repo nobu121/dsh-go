@@ -26,9 +26,11 @@ jobs:
       matrix:
         include:
           - os: macos-14
-            asset: dsh-go-darwin-arm64.zip
+            artifact: darwin-arm64
+            path: bin/dsh-go-darwin-arm64.*
           - os: windows-latest
-            asset: dsh-go-windows-amd64.zip
+            artifact: windows-amd64
+            path: bin/dsh-go-windows-amd64.zip
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -56,13 +58,13 @@ jobs:
       - name: Install wails3
         shell: bash
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.16
-      - name: Package updater zip
+      - name: Package dist
         shell: bash
-        run: wails3 task package:update-zip APP_VERSION="$APP_VERSION" UPDATE_REPO="$UPDATE_REPO"
+        run: wails3 task package:dist APP_VERSION="$APP_VERSION" UPDATE_REPO="$UPDATE_REPO"
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset }}
-          path: bin/${{ matrix.asset }}
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.path }}
           if-no-files-found: error
 
   publish:
@@ -77,7 +79,8 @@ jobs:
       - name: Checksums
         run: |
           cd dist
-          sha256sum dsh-go-*.zip > SHA256SUMS
+          shopt -s nullglob
+          sha256sum dsh-go-*.zip dsh-go-*.dmg > SHA256SUMS
           cat SHA256SUMS
       - name: Publish GitHub prerelease
         env:
@@ -91,9 +94,9 @@ jobs:
           tag="v${ver}"
           notes="Bundled DeepSeek Harness ${ver}."
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" dist/dsh-go-*.zip dist/SHA256SUMS --clobber
+            gh release upload "$tag" dist/dsh-go-* dist/SHA256SUMS --clobber
           else
-            gh release create "$tag" dist/dsh-go-*.zip dist/SHA256SUMS \
+            gh release create "$tag" dist/dsh-go-* dist/SHA256SUMS \
               --title "$tag" \
               --notes "$notes" \
               --prerelease
