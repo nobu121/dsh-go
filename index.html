@@ -4,17 +4,60 @@
   <meta charset="utf-8" />
   <title>dsh-go</title>
   <style>
-    html, body { height: 100%; margin: 0; background: #06070f; color: #dbe2f5;
-      font-family: ui-sans-serif, system-ui, sans-serif; }
+    html, body { height: 100%; margin: 0; background: #fff; }
     main { height: 100%; display: grid; place-items: center; }
-    p { font-size: 15px; opacity: .8; }
-    .dot::after { content: ''; animation: dots 1.2s steps(4, end) infinite; }
-    @keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
+    .logo {
+      width: 72px;
+      height: 72px;
+      display: block;
+      filter: invert(1);
+      animation: float 1.6s ease-in-out infinite;
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(8px); }
+      50% { transform: translateY(-14px); }
+    }
+    .bar { width: 72px; height: 3px; border-radius: 999px; background: #eee; overflow: hidden; margin: 22px auto 0; }
+    .bar > i { display: block; height: 100%; width: 0; background: #111; border-radius: inherit; }
+    button {
+      margin-top: 22px; border: 0; border-radius: 8px; padding: 8px 16px;
+      background: #111; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    button[hidden], .bar[hidden] { display: none; }
   </style>
 </head>
 <body>
   <main>
-    <p><span class="dot">正在启动 DeepSeek Harness</span></p>
+    <div>
+      <img class="logo" src="/build/appicon.png" alt="" />
+      <div class="bar" id="bar" hidden><i id="fill"></i></div>
+      <button id="retry" type="button" hidden>↻</button>
+    </div>
   </main>
+  <script>
+    const bar = document.getElementById("bar");
+    const fill = document.getElementById("fill");
+    const retry = document.getElementById("retry");
+
+    window.wails?.Events?.On?.("dsh-go:prep", (e) => {
+      const p = e?.data ?? e ?? {};
+      const stage = p.Stage ?? p.stage ?? "";
+      const bytes = Number(p.Bytes ?? p.bytes ?? 0);
+      const total = Number(p.Total ?? p.total ?? 0);
+      retry.hidden = stage !== "error";
+      if (stage === "download" && total > 0) {
+        bar.hidden = false;
+        fill.style.width = Math.min(100, Math.round(bytes / total * 100)) + "%";
+      } else {
+        bar.hidden = stage !== "download";
+      }
+    });
+
+    retry.addEventListener("click", () => {
+      retry.hidden = true;
+      window.wails?.Events?.Emit?.("dsh-go:prep-retry");
+    });
+    window.wails?.Events?.Emit?.("dsh-go:prep-ready");
+  </script>
 </body>
 </html>

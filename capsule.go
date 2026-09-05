@@ -12,11 +12,14 @@ import (
 var capsuleHTML string
 
 const (
-	capsuleWidth  = 188
+	capsuleWidth  = 236
 	capsuleHeight = 26
 	capsuleEvent  = "dsh-go:apply-update"
 	capsuleReady  = "dsh-go:capsule-ready"
 	capsuleLabel  = "dsh-go:capsule-label"
+
+	capsuleKindApp = "app"
+	capsuleKindDSH = "dsh"
 )
 
 type updateCapsule struct {
@@ -24,6 +27,9 @@ type updateCapsule struct {
 	parent *application.WebviewWindow
 	win    *application.WebviewWindow
 	label  string
+	kind   string
+	appVer string
+	dshVer string
 	ready  bool
 }
 
@@ -72,12 +78,41 @@ func capsuleLabelText(version string) string {
 }
 
 func (c *updateCapsule) show(version string) {
-	c.label = capsuleLabelText(version)
+	c.appVer = version
+	c.showKind(capsuleKindApp, capsuleLabelText(version))
+	log.Printf("update ready: %s", version)
+}
+
+func (c *updateCapsule) showDSH(version string) {
+	c.dshVer = version
+	c.showKind(capsuleKindDSH, dshCapsuleLabel(version))
+	log.Printf("dsh update ready: %s", version)
+}
+
+func (c *updateCapsule) showKind(kind, label string) {
+	c.kind = kind
+	c.label = label
 	c.ready = true
 	c.app.Event.Emit(capsuleLabel, c.label)
 	c.reposition()
 	c.syncVisibility()
-	log.Printf("update ready: %s", version)
+}
+
+func (c *updateCapsule) hide() {
+	c.ready = false
+	c.kind = ""
+	c.label = ""
+	if c.win != nil {
+		c.win.Hide()
+	}
+}
+
+func (c *updateCapsule) restoreAppIfPending() {
+	if c.appVer != "" {
+		c.show(c.appVer)
+	} else {
+		c.hide()
+	}
 }
 
 func (c *updateCapsule) syncVisibility() {

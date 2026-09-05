@@ -14,10 +14,11 @@ tasks:
     vars:
       DEFAULT_OUTPUT: '{{.BIN_DIR}}/{{.APP_NAME}}'
       OUTPUT: '{{ .OUTPUT | default .DEFAULT_OUTPUT }}'
-      BUILD_FLAGS: '{{if eq .DEV "true"}}-mod=mod -buildvcs=false -gcflags=all="-l"{{else}}-mod=mod -tags production -trimpath -buildvcs=false -ldflags="-w -s -X main.Version={{.APP_VERSION}} -X main.UpdateRepo={{.UPDATE_REPO}}"{{end}}'
+      BUILD_FLAGS: '{{if eq .DEV "true"}}-mod=mod -buildvcs=false -gcflags=all="-l"{{else}}-mod=mod -tags production -trimpath -buildvcs=false -ldflags="-w -s -X main.Version={{.APP_VERSION}} -X main.UpdateRepo={{.UPDATE_REPO}} -X main.RuntimeBaseURL={{.RUNTIME_BASE_URL}}"{{end}}'
       APP_VERSION:
         sh: 'tr -d "[:space:]" < dsh.version 2>/dev/null || echo 0.0.0'
       UPDATE_REPO: '{{.UPDATE_REPO | default ""}}'
+      RUNTIME_BASE_URL: '{{.RUNTIME_BASE_URL | default ""}}'
     env:
       GOOS: darwin
       CGO_ENABLED: 1
@@ -34,7 +35,7 @@ tasks:
       - task: create:app:bundle
 
   create:app:bundle:
-    summary: Creates an `.app` bundle with dsh-runtime
+    summary: Creates a shell-only `.app` bundle
     cmds:
       - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/MacOS"
       - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources"
@@ -45,18 +46,18 @@ tasks:
         else
           rm -f "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources/Assets.car"
         fi
+      - rm -rf "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources/dsh-runtime"
       - cp "{{.BIN_DIR}}/{{.APP_NAME}}" "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/MacOS"
       - cp build/darwin/Info.plist "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents"
       - |
         RUNTIME_SRC="{{.DSH_RUNTIME_DIR}}"
-        if [ -d "$RUNTIME_SRC" ]; then
-          rm -rf "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources/dsh-runtime"
+        if [ -n "$RUNTIME_SRC" ] && [ -d "$RUNTIME_SRC" ]; then
           mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources/dsh-runtime"
           cp -R "$RUNTIME_SRC"/. "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources/dsh-runtime/"
         fi
       - codesign --force --deep --sign - "{{.BIN_DIR}}/{{.APP_NAME}}.app"
     vars:
-      DSH_RUNTIME_DIR: '{{.DSH_RUNTIME_DIR | default "vendor/dsh"}}'
+      DSH_RUNTIME_DIR: '{{.DSH_RUNTIME_DIR | default ""}}'
 
   run:
     cmds:

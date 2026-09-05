@@ -11,6 +11,10 @@ func applyProcAttr(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 }
 
+func applyReaperProcAttr(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+}
+
 func killProcess(cmd *exec.Cmd) {
 	if cmd.Process == nil {
 		return

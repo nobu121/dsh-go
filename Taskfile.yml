@@ -4,6 +4,7 @@ vars:
   APP_NAME: "dsh-go"
   BIN_DIR: "bin"
   UPDATE_REPO: '{{.UPDATE_REPO | default ""}}'
+  RUNTIME_BASE_URL: '{{.RUNTIME_BASE_URL | default ""}}'
   APP_VERSION: '{{.APP_VERSION | default ""}}'
   GOOS: '{{.GOOS | default OS}}'
 
@@ -34,8 +35,14 @@ tasks:
       - task: '{{if eq OS "darwin"}}package{{else}}build{{end}}'
         vars:
           UPDATE_REPO: '{{.UPDATE_REPO}}'
+          RUNTIME_BASE_URL: '{{.RUNTIME_BASE_URL}}'
           APP_VERSION: '{{.APP_VERSION}}'
       - bash ./scripts/package-dist.sh
+
+  package:runtime:
+    summary: Packages on-demand dsh-runtime zip from vendor/dsh
+    cmds:
+      - bash ./scripts/package-runtime.sh
 
   run:
     summary: Runs the application

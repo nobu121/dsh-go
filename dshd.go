@@ -6,7 +6,9 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"io/fs"
 	"log"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,17 +22,71 @@ import (
 const (
 	defaultRepo = "~/Desktop/deepseek-harness"
 	maxRestarts = 5
-	shutdownAck = 5 * time.Second
 )
 
-var dshURLLine = regexp.MustCompile(`^dsh web: (https?://\S+)$`)
+var (
+	dshURLLine = regexp.MustCompile(`dsh web: (https?://\S+)`)
+	lookPath   = exec.LookPath
+	errNoDSH   = errors.New("no dsh available")
+)
+
+type dshSourceKind string
+
+const (
+	sourceManual  dshSourceKind = "manual"
+	sourcePath    dshSourceKind = "path"
+	sourceCache   dshSourceKind = "cache"
+	sourceBundled dshSourceKind = "bundled"
+	sourceRepo    dshSourceKind = "repo"
+	sourceNpx     dshSourceKind = "npx"
+)
+
+type resolvedDSH struct {
+	Argv []string
+	Kind dshSourceKind
+	Path string
+}
+
+func sourceLabel(k dshSourceKind) string {
+	switch k {
+	case sourcePath:
+		return "本机 dsh"
+	case sourceCache:
+		return "缓存 runtime"
+	case sourceBundled:
+		return "包内 runtime"
+	case sourceRepo:
+		return "源码仓库"
+	case sourceNpx:
+		return "npx"
+	case sourceManual:
+		return "DSH_EXE"
+	default:
+		return ""
+	}
+}
+
+func harnessTitle(src resolvedDSH) string {
+	if label := sourceLabel(src.Kind); label != "" {
+		return "DeepSeek Harness · " + label
+	}
+	return "DeepSeek Harness"
+}
 
 func parseDSHWebURL(line string) (string, bool) {
 	m := dshURLLine.FindStringSubmatch(line)
 	if m == nil {
 		return "", false
 	}
-	return m[1], true
+	raw := strings.TrimRight(m[1], ".,;)")
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", false
+	}
+	if u.Query().Get("token") == "" {
+		return "", false
+	}
+	return u.String(), true
 }
 
 // DSH supervises one dsh process tree.
@@ -40,12 +96,15 @@ type DSH struct {
 	closed  bool
 	onReady func(url string)
 	config  DSHConfig
+	source  resolvedDSH
+	lastURL string
 }
 
 // DSHConfig holds the resolved launch configuration.
 type DSHConfig struct {
 	Command []string
 	Home    string
+	OnPrep  PrepReporter
 }
 
 func defaultHomeDir() string {
@@ -92,32 +151,47 @@ func runtimeRoots() []string {
 }
 
 func bundledNodeCommand() ([]string, error) {
-	nodeName := bundledNodeName()
 	for _, root := range runtimeRoots() {
-		node := filepath.Join(root, nodeName)
-		bin := dshBinJS(root)
-		if fi, err := os.Stat(node); err == nil && !fi.IsDir() {
-			if _, err := os.Stat(bin); err == nil {
-				return append([]string{node, bin}, webFlags()...), nil
-			}
+		if runtimeLooksValid(root) {
+			return runtimeNodeCommand(root), nil
 		}
 	}
 	return nil, errors.New("no bundled node + @deepseek-ai/dsh runtime")
 }
 
-func (c DSHConfig) resolveCommand() ([]string, error) {
+func resolveLaunch(c DSHConfig) (resolvedDSH, error) {
 	if len(c.Command) > 0 {
-		return c.Command, nil
+		return resolvedDSH{Argv: c.Command, Kind: sourceManual}, nil
 	}
 	if exe := os.Getenv("DSH_EXE"); exe != "" {
 		if _, err := os.Stat(exe); err != nil {
-			return nil, err
+			return resolvedDSH{}, err
 		}
-		return append([]string{exe}, webFlags()...), nil
+		return resolvedDSH{
+			Argv: append([]string{exe}, webFlags()...),
+			Kind: sourceManual,
+			Path: exe,
+		}, nil
+	}
+	if exe, err := lookNamed("dsh"); err == nil && exe != "" {
+		if _, err := os.Stat(exe); err == nil {
+			return resolvedDSH{
+				Argv: append([]string{exe}, webFlags()...),
+				Kind: sourcePath,
+				Path: exe,
+			}, nil
+		}
+	}
+	if argv, ok := cacheRuntimeCommand(); ok {
+		return resolvedDSH{Argv: argv, Kind: sourceCache, Path: runtimeCacheDir()}, nil
 	}
 	if bundled, err := bundledNodeCommand(); err == nil {
-		return bundled, nil
+		return resolvedDSH{Argv: bundled, Kind: sourceBundled}, nil
 	}
+	return resolvedDSH{}, errNoDSH
+}
+
+func resolveDevFallback() (resolvedDSH, bool) {
 	repo := os.Getenv("DSH_REPO")
 	if repo == "" {
 		home, _ := os.UserHomeDir()
@@ -125,16 +199,151 @@ func (c DSHConfig) resolveCommand() ([]string, error) {
 	}
 	bin := filepath.Join(repo, "apps", "cli", "lib", "bin.js")
 	if _, err := os.Stat(bin); err == nil {
-		return append([]string{"node", bin}, webFlags()...), nil
+		node := "node"
+		if p, err := lookNamed("node"); err == nil {
+			node = p
+		}
+		return resolvedDSH{
+			Argv: append([]string{node, bin}, webFlags()...),
+			Kind: sourceRepo,
+			Path: repo,
+		}, true
 	}
-	wrapper := filepath.Join(".", "scripts", "run-dsh.sh")
-	if wd, err := os.Getwd(); err == nil {
-		wrapper = filepath.Join(wd, "scripts", "run-dsh.sh")
+	if argv, ok := hotNpxArgv(currentVersion()); ok {
+		return resolvedDSH{Argv: argv, Kind: sourceNpx}, true
 	}
-	if _, err := os.Stat(wrapper); err != nil {
-		return nil, errors.New("no dsh available: run scripts/sync-dsh.sh or set DSH_EXE / DSH_REPO")
+	return resolvedDSH{}, false
+}
+
+func hotNpxArgv(pin string) ([]string, bool) {
+	npx, err := lookNamed("npx")
+	if err != nil || npx == "" || pin == "" {
+		return nil, false
 	}
-	return append([]string{wrapper}, webFlags()...), nil
+	if !npxHasCachedPin(pin) {
+		return nil, false
+	}
+	return append([]string{npx, "-y", "@deepseek-ai/dsh@" + pin}, webFlags()...), true
+}
+
+func npxHasCachedPin(pin string) bool {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	root := filepath.Join(home, ".npm", "_npx")
+	if _, err := os.Stat(root); err != nil {
+		return false
+	}
+	found := false
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || found {
+			return err
+		}
+		if d.Name() != "package.json" {
+			return nil
+		}
+		if filepath.Base(filepath.Dir(path)) != "dsh" {
+			return nil
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		if strings.Contains(string(b), `"version": "`+pin+`"`) {
+			found = true
+			return fs.SkipAll
+		}
+		return nil
+	})
+	return found
+}
+
+func (c DSHConfig) resolveCommand() ([]string, error) {
+	r, err := c.resolve()
+	if err != nil {
+		return nil, err
+	}
+	return r.Argv, nil
+}
+
+func (c DSHConfig) resolve() (resolvedDSH, error) {
+	r, err := resolveLaunch(c)
+	if err == nil {
+		return r, nil
+	}
+	if !errors.Is(err, errNoDSH) {
+		return resolvedDSH{}, err
+	}
+	if r, ok := resolveDevFallback(); ok {
+		return r, nil
+	}
+	return resolvedDSH{}, errors.New("no dsh available: install dsh, set DSH_EXE / DSH_REPO, or set DSH_RUNTIME_BASE_URL")
+}
+
+func (d *DSH) ensureCommand(ctx context.Context) ([]string, error) {
+	d.report(PrepProgress{Stage: "detect", Message: "正在检测本机 dsh…"})
+	r, err := resolveLaunch(d.config)
+	if err == nil {
+		d.setSource(r)
+		return r.Argv, nil
+	}
+	if !errors.Is(err, errNoDSH) {
+		return nil, err
+	}
+	if base := runtimeBaseURL(); base != "" {
+		if ferr := fetchCachedRuntime(ctx, d.config.OnPrep); ferr != nil {
+			d.report(PrepProgress{Stage: "error", Message: ferr.Error()})
+		} else if r, err := resolveLaunch(d.config); err == nil {
+			d.setSource(r)
+			return r.Argv, nil
+		}
+	}
+	if r, ok := resolveDevFallback(); ok {
+		d.setSource(r)
+		return r.Argv, nil
+	}
+	return nil, errors.New("no dsh available: install dsh, set DSH_EXE / DSH_REPO, or set DSH_RUNTIME_BASE_URL")
+}
+
+func (d *DSH) setSource(r resolvedDSH) {
+	d.mu.Lock()
+	d.source = r
+	d.mu.Unlock()
+}
+
+func (d *DSH) Source() resolvedDSH {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.source
+}
+
+func (d *DSH) setLastURL(url string) {
+	d.mu.Lock()
+	d.lastURL = url
+	d.mu.Unlock()
+}
+
+func (d *DSH) LastURL() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.lastURL
+}
+
+func (d *DSH) report(p PrepProgress) {
+	reportPrep(d.config.OnPrep, p)
+}
+
+// killCurrent stops the running dsh process without marking the supervisor closed,
+// so the Start loop relaunches.
+func (d *DSH) killCurrent() {
+	d.mu.Lock()
+	cmd := d.cmd
+	d.mu.Unlock()
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+	killProcess(cmd)
 }
 
 // NewDSH returns a supervisor. onReady is invoked with the authenticated
@@ -168,10 +377,12 @@ func (d *DSH) Start(ctx context.Context) error {
 }
 
 func (d *DSH) launchOnce(ctx context.Context) (bool, error) {
-	argv, err := d.config.resolveCommand()
+	argv, err := d.ensureCommand(ctx)
 	if err != nil {
+		d.report(PrepProgress{Stage: "error", Message: err.Error()})
 		return false, err
 	}
+	d.report(PrepProgress{Stage: "start", Message: "正在启动 DeepSeek Harness…"})
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Env = append(os.Environ(), "DSH_HOME="+d.config.Home)
 	applyProcAttr(cmd)
@@ -189,6 +400,8 @@ func (d *DSH) launchOnce(ctx context.Context) (bool, error) {
 	if err := cmd.Start(); err != nil {
 		return false, err
 	}
+	stopReap := startDeathReaper(cmd.Process.Pid)
+	defer stopReap()
 	log.Printf("dsh started: %s", strings.Join(argv, " "))
 
 	ready := false
@@ -201,6 +414,7 @@ func (d *DSH) launchOnce(ctx context.Context) (bool, error) {
 		}
 		if url, ok := parseDSHWebURL(line); ok {
 			ready = true
+			d.setLastURL(url)
 			log.Printf("dsh ready: %s", url)
 			if d.onReady != nil {
 				d.onReady(url)
@@ -214,7 +428,9 @@ func (d *DSH) launchOnce(ctx context.Context) (bool, error) {
 	return ready, nil
 }
 
-// Close terminates the dsh process tree and waits for it to exit.
+// Close marks the supervisor stopped and kills the dsh process group.
+// launchOnce already Wait()s; a second Wait here raced and blocked Quit
+// for up to several seconds after the window closed.
 func (d *DSH) Close() {
 	d.mu.Lock()
 	d.closed = true
@@ -223,16 +439,8 @@ func (d *DSH) Close() {
 	if cmd == nil || cmd.Process == nil {
 		return
 	}
-	killProcess(cmd)
-	done := make(chan struct{})
-	go func() { _ = cmd.Wait(); close(done) }()
-	select {
-	case <-done:
-		log.Printf("dsh stopped")
-	case <-time.After(shutdownAck):
-		killProcessForce(cmd)
-		log.Printf("dsh killed after grace period")
-	}
+	killProcessForce(cmd)
+	log.Printf("dsh stopped")
 }
 
 func (d *DSH) isClosed() bool {

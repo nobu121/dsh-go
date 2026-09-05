@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Build release artifacts:
+# Build shell-only release artifacts:
 #   macOS  — ULMO DMG for people, max-deflate zip for the updater
 #   Windows — max-deflate zip (portable folder, also the updater asset)
+# Runtime zips are produced separately by scripts/package-runtime.sh.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN_DIR="${BIN_DIR:-$ROOT/bin}"
 APP_NAME="${APP_NAME:-dsh-go}"
-DEST="${DSH_VENDOR_DIR:-$ROOT/vendor/dsh}"
 os="$(uname -s)"
 arch="$(uname -m)"
 case "$arch" in
@@ -70,13 +70,8 @@ elif [[ "$os" == MINGW* || "$os" == MSYS* || "$os" == CYGWIN* || "$os" == Window
     echo "missing $exe; build the Windows binary first" >&2
     exit 1
   fi
-  if [[ ! -d "$DEST" ]]; then
-    echo "missing $DEST; run scripts/sync-dsh.sh first" >&2
-    exit 1
-  fi
-  mkdir -p "$stage/${APP_NAME}/dsh-runtime"
+  mkdir -p "$stage/${APP_NAME}"
   cp "$exe" "$stage/${APP_NAME}/${APP_NAME}.exe"
-  cp -R "$DEST/." "$stage/${APP_NAME}/dsh-runtime/"
   asset="${APP_NAME}-windows-${goarch}.zip"
   write_zip_max "$stage" "$APP_NAME" "$BIN_DIR/$asset"
   echo "$BIN_DIR/$asset"
