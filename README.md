@@ -44,7 +44,6 @@ scripts/         sync / smoke / dist / runtime-zip helpers
 build/darwin/    Info.plist + icons for the .app
 build/windows/   exe resources (icon, manifest, version info)
 .github/         detect npm latest + GitHub Actions package/release
-.agents/skills/  CNB project skills
 ```
 
 ## Development

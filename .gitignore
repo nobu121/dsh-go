@@ -7,3 +7,5 @@
 dsh-home/
 .DS_Store
 .task/
+.agents/
+skills-lock.json

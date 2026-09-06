@@ -34,7 +34,6 @@ scripts/         sync / smoke / dist / runtime-zip 脚本
 build/darwin/    .app 的 Info.plist 与图标
 build/windows/   exe 资源（图标、清单、版本信息）
 .github/         探测 npm latest + GitHub Actions 打包/发版
-.agents/skills/  CNB 项目 skills
 ```
 
 ## 开发
