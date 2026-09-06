@@ -1,4 +1,4 @@
-name: Detect upstream dsh rc
+name: Detect npm latest dsh
 
 on:
   schedule:
@@ -24,9 +24,9 @@ jobs:
           ver="$(bash scripts/latest-dsh-rc.sh)"
           echo "version=${ver}" >> "$GITHUB_OUTPUT"
           if [ -n "$ver" ]; then
-            echo "new rc: $ver"
+            echo "new latest: $ver"
           else
-            echo "no newer rc on npm"
+            echo "npm latest matches dsh.version"
           fi
 
   release:

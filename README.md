@@ -41,7 +41,7 @@ dsh.version      product / target @deepseek-ai/dsh pin
 scripts/         sync / smoke / dist / runtime-zip helpers
 build/darwin/    Info.plist + icons for the .app
 build/windows/   exe resources (icon, manifest, version info)
-.github/         detect rc + GitHub Actions package/release
+.github/         detect npm latest + GitHub Actions package/release
 .agents/skills/  CNB project skills
 ```
 
@@ -83,10 +83,9 @@ download needs `DSH_RUNTIME_BASE_URL`.
 ## Upstream pin
 
 [`dsh.version`](dsh.version) is the product version and the target dsh
-version for downloads and assisted upgrades. CI only follows `vX.Y.Z-rc.N`
-from
-[deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness/releases)
-and skips tags that are not on npm yet. Alpha tags are ignored.
+version for downloads and assisted upgrades. CI follows npm's `latest`
+dist-tag for `@deepseek-ai/dsh` (currently an rc; later a stable
+`x.y.z` when they publish one). The `alpha` tag is ignored.
 
 ## License
 
