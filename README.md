@@ -1,5 +1,7 @@
 # dsh-go
 
+**English** | [中文](README.zh-CN.md)
+
 A thin [Wails v3](https://v3.wails.io/) desktop shell for
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 

@@ -110,6 +110,14 @@ func fetchCachedRuntime(ctx context.Context, onPrep PrepReporter) error {
 		return fmt.Errorf("download %s: %w", asset, err)
 	}
 	defer body.Close()
+	if total < 0 {
+		total = 0
+	}
+	reportPrep(onPrep, PrepProgress{
+		Stage:   "download",
+		Message: "正在下载 DeepSeek Harness…",
+		Total:   total,
+	})
 
 	tmpZip, err := os.CreateTemp("", "dsh-runtime-*.zip")
 	if err != nil {
