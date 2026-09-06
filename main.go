@@ -56,7 +56,7 @@ func main() {
 		if dshURL == "" {
 			return
 		}
-		ui.showHarness(dshURL, dsh.Source())
+		ui.showHarness(dshURL)
 		go offerDSHUpdate(dsh, func(ver string) {
 			if c := ui.capsule; c != nil {
 				c.showDSH(ver)

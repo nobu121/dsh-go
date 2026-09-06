@@ -64,15 +64,6 @@ func TestGlobalUpgradeArgs(t *testing.T) {
 	}
 }
 
-func TestHarnessTitle(t *testing.T) {
-	if got := harnessTitle(resolvedDSH{Kind: sourcePath}); got != "DeepSeek Harness · 本机 dsh" {
-		t.Fatalf("got %q", got)
-	}
-	if got := harnessTitle(resolvedDSH{Kind: sourceCache}); got != "DeepSeek Harness · 缓存 runtime" {
-		t.Fatalf("got %q", got)
-	}
-}
-
 func TestCanUpdateDSH(t *testing.T) {
 	if !canUpdateDSH(sourcePath) || !canUpdateDSH(sourceCache) {
 		t.Fatal("path and cache should be updatable")

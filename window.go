@@ -50,15 +50,14 @@ func (s *shellWindows) current() *application.WebviewWindow {
 	return s.win
 }
 
-func (s *shellWindows) showHarness(dshURL string, src resolvedDSH) *application.WebviewWindow {
+func (s *shellWindows) showHarness(dshURL string) *application.WebviewWindow {
 	s.mu.Lock()
 	from := s.win
 	prep := s.prep
 	s.mu.Unlock()
 
-	title := harnessTitle(src)
-	log.Printf("opening harness window (%s)", title)
-	next := newHarnessWindow(s.app, dshURL, title, from)
+	log.Printf("opening harness window")
+	next := newHarnessWindow(s.app, dshURL, from)
 	cap := newUpdateCapsule(s.app, next)
 	next.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
 		s.app.Quit()
@@ -92,32 +91,30 @@ func (s *shellWindows) showHarness(dshURL string, src resolvedDSH) *application.
 }
 
 func newPrepWindow(app *application.App) *application.WebviewWindow {
+	dark := knownThemeDark()
 	return app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:                "DeepSeek Harness",
 		Width:                1280,
 		Height:               800,
 		URL:                  "/",
 		AllowSimpleEventEmit: true,
-		Mac: application.MacWindow{
-			TitleBar: application.MacTitleBarDefault,
-		},
-		BackgroundColour: application.NewRGB(255, 255, 255),
+		Mac:                  macChrome(dark),
+		BackgroundColour:     application.NewRGB(255, 255, 255),
 	})
 }
 
-func newHarnessWindow(app *application.App, dshURL, title string, from *application.WebviewWindow) *application.WebviewWindow {
-	if title == "" {
-		title = "DeepSeek Harness"
-	}
+func newHarnessWindow(app *application.App, dshURL string, from *application.WebviewWindow) *application.WebviewWindow {
+	dark := knownThemeDark()
+	css, js := harnessWindowSafeArea()
 	opts := application.WebviewWindowOptions{
-		Title:  title,
-		Width:  1280,
-		Height: 800,
-		URL:    dshURL,
-		Hidden: true,
-		Mac: application.MacWindow{
-			TitleBar: application.MacTitleBarDefault,
-		},
+		Title:            "DeepSeek Harness",
+		Width:            1280,
+		Height:           800,
+		URL:              dshURL,
+		Hidden:           true,
+		CSS:              css,
+		JS:               js,
+		Mac:              macChrome(dark),
 		BackgroundColour: application.NewRGB(6, 7, 15),
 	}
 	if from != nil {

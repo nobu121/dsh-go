@@ -47,32 +47,6 @@ type resolvedDSH struct {
 	Path string
 }
 
-func sourceLabel(k dshSourceKind) string {
-	switch k {
-	case sourcePath:
-		return "本机 dsh"
-	case sourceCache:
-		return "缓存 runtime"
-	case sourceBundled:
-		return "包内 runtime"
-	case sourceRepo:
-		return "源码仓库"
-	case sourceNpx:
-		return "npx"
-	case sourceManual:
-		return "DSH_EXE"
-	default:
-		return ""
-	}
-}
-
-func harnessTitle(src resolvedDSH) string {
-	if label := sourceLabel(src.Kind); label != "" {
-		return "DeepSeek Harness · " + label
-	}
-	return "DeepSeek Harness"
-}
-
 func parseDSHWebURL(line string) (string, bool) {
 	m := dshURLLine.FindStringSubmatch(line)
 	if m == nil {
