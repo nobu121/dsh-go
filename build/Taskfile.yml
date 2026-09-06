@@ -9,17 +9,20 @@ tasks:
       - go mod tidy
 
   generate:icons:
-    summary: Regenerates Windows `.ico` and macOS `.icns` from appicon.png
+    summary: Regenerates macOS `.icns` and a rounded Windows `.ico` from appicon.png
     run: once
     dir: build
     sources:
       - "appicon.png"
       - "appicon.icon"
+      - "../scripts/round-windows-icon/main.go"
     generates:
       - "darwin/icons.icns"
       - "windows/icon.ico"
+      - "windows/appicon.png"
     cmds:
       - wails3 generate icons -input appicon.png -macfilename darwin/icons.icns -windowsfilename windows/icon.ico -iconcomposerinput appicon.icon -macassetdir darwin
+      - go run -mod=mod ../scripts/round-windows-icon/main.go appicon.png windows/appicon.png windows/icon.ico
 
   update:build-assets:
     summary: Regenerates Info.plist / Windows info from config.yml
