@@ -27,10 +27,15 @@ jobs:
         include:
           - os: macos-14
             artifact: darwin-arm64
-            path: bin/dsh-go-darwin-arm64.*
+            path: |
+              bin/dsh-go-darwin-arm64.zip
+              bin/dsh-go-darwin-arm64.dmg
+              bin/dsh-runtime-darwin-arm64.zip
           - os: windows-latest
             artifact: windows-amd64
-            path: bin/dsh-go-windows-amd64.zip
+            path: |
+              bin/dsh-go-windows-amd64.zip
+              bin/dsh-runtime-windows-amd64.zip
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -49,10 +54,11 @@ jobs:
           fi
           printf '%s\n' "$ver" > dsh.version
           echo "APP_VERSION=$ver" >> "$GITHUB_ENV"
-      - name: Sync bundled dsh
+          echo "RUNTIME_BASE_URL=https://github.com/${{ github.repository }}/releases/download/v${ver}" >> "$GITHUB_ENV"
+      - name: Sync dsh runtime
         shell: bash
         run: bash scripts/sync-dsh.sh
-      - name: Smoke bundled runtime
+      - name: Smoke dsh runtime
         shell: bash
         run: bash scripts/smoke-dsh.sh
       - name: Install wails3
@@ -60,7 +66,10 @@ jobs:
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.16
       - name: Package dist
         shell: bash
-        run: wails3 task package:dist APP_VERSION="$APP_VERSION" UPDATE_REPO="$UPDATE_REPO"
+        run: wails3 task package:dist APP_VERSION="$APP_VERSION" UPDATE_REPO="$UPDATE_REPO" RUNTIME_BASE_URL="$RUNTIME_BASE_URL"
+      - name: Package runtime
+        shell: bash
+        run: wails3 task package:runtime
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
@@ -80,7 +89,7 @@ jobs:
         run: |
           cd dist
           shopt -s nullglob
-          sha256sum dsh-go-*.zip dsh-go-*.dmg > SHA256SUMS
+          sha256sum dsh-go-*.zip dsh-go-*.dmg dsh-runtime-*.zip > SHA256SUMS
           cat SHA256SUMS
       - name: Publish GitHub prerelease
         env:
@@ -92,11 +101,11 @@ jobs:
             ver="$(tr -d '[:space:]' < dsh.version)"
           fi
           tag="v${ver}"
-          notes="Bundled DeepSeek Harness ${ver}."
+          notes="Shell-only dsh-go ${ver} plus on-demand dsh-runtime zips for macOS (arm64) and Windows (amd64)."
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" dist/dsh-go-* dist/SHA256SUMS --clobber
+            gh release upload "$tag" dist/dsh-go-* dist/dsh-runtime-* dist/SHA256SUMS --clobber
           else
-            gh release create "$tag" dist/dsh-go-* dist/SHA256SUMS \
+            gh release create "$tag" dist/dsh-go-* dist/dsh-runtime-* dist/SHA256SUMS \
               --title "$tag" \
               --notes "$notes" \
               --prerelease
