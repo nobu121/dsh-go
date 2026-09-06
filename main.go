@@ -28,6 +28,7 @@ func main() {
 			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
 	})
+	registerThemeEvents(app)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	ui := &shellWindows{app: app}

@@ -5,46 +5,49 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 const (
-	themeFromWebEvent = "dsh-go:theme"
-	themeDarkEvent    = "dsh-go:theme-dark"
-	themeLightEvent   = "dsh-go:theme-light"
-	themeApplyEvent   = "dsh-go:theme-apply"
+	themeDarkEvent  = "dsh-go:theme-dark"
+	themeLightEvent = "dsh-go:theme-light"
 )
 
-// themeQueryJS reads the live flag ui-theme writes onto the document.
-var themeQueryJS = `(function(){
-  var body = document.body;
-  if (!body) return null;
-  return body.hasAttribute("data-ds-dark-theme");
-})()`
-
-var themeWatchJS string
-
-func init() {
-	themeWatchJS = `(function(){
+// themeWatchJS observes harness ui-theme's body[data-ds-dark-theme] and pushes
+// bare-name events to the shell. No host-side polling.
+//
+// Emit goes through chrome.webview / webkit messageHandlers directly so it
+// works before window._wails.invoke is wired on remote pages.
+var themeWatchJS = `(function(){
   if (window.__dshGoThemeWatch) return;
   window.__dshGoThemeWatch = true;
-  function isDark(){ return ` + themeQueryJS + `; }
+  function isDark(){
+    var body = document.body;
+    if (!body) return null;
+    return body.hasAttribute("data-ds-dark-theme");
+  }
   function emit(dark){
     var name = dark ? "dsh-go:theme-dark" : "dsh-go:theme-light";
+    var msg = "wails:event:emit:" + name;
     try {
       if (window._wails && typeof window._wails.invoke === "function") {
-        window._wails.invoke("wails:event:emit:" + name);
+        window._wails.invoke(msg);
         return;
       }
     } catch (e) {}
-    try { window.webkit.messageHandlers.external.postMessage("wails:event:emit:" + name); } catch (e2) {}
+    try {
+      if (window.chrome && window.chrome.webview && typeof window.chrome.webview.postMessage === "function") {
+        window.chrome.webview.postMessage(msg);
+        return;
+      }
+    } catch (e2) {}
+    try { window.webkit.messageHandlers.external.postMessage(msg); } catch (e3) {}
   }
   var last;
   function report(){
     var dark = isDark();
-    if (dark === last) return;
+    if (dark === null || dark === last) return;
     last = dark;
     emit(dark);
   }
@@ -58,12 +61,19 @@ func init() {
   try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", report); } catch (e) {}
   report();
 })();`
-}
 
 var (
 	themeListenerMu sync.Mutex
 	themeListener   func(bool)
+	themeEventsOnce sync.Once
 )
+
+func registerThemeEvents(app *application.App) {
+	themeEventsOnce.Do(func() {
+		app.Event.On(themeDarkEvent, func(*application.CustomEvent) { onThemeDetected(true) })
+		app.Event.On(themeLightEvent, func(*application.CustomEvent) { onThemeDetected(false) })
+	})
+}
 
 func setThemeListener(fn func(bool)) {
 	themeListenerMu.Lock()
@@ -219,22 +229,9 @@ func macChrome(dark bool) application.MacWindow {
 		appearance = application.NSAppearanceNameDarkAqua
 	}
 	return application.MacWindow{
-		TitleBar:                application.MacTitleBarHidden,
-		Appearance:              appearance,
-		InvisibleTitleBarHeight: 28,
+		TitleBar:   application.MacTitleBarDefault,
+		Appearance: appearance,
 	}
-}
-
-func parseThemeDark(data any) (bool, bool) {
-	switch v := data.(type) {
-	case bool:
-		return v, true
-	case map[string]any:
-		if d, ok := v["dark"].(bool); ok {
-			return d, true
-		}
-	}
-	return false, false
 }
 
 func applyChrome(win *application.WebviewWindow, dark bool) {
@@ -245,41 +242,8 @@ func applyChrome(win *application.WebviewWindow, dark bool) {
 	applyNativeChrome(win, dark)
 }
 
-func applyPrepPage(win *application.WebviewWindow, dark bool) {
-	if win == nil {
-		return
-	}
-	value := "light"
-	if dark {
-		value = "dark"
-	}
-	win.ExecJS(`document.documentElement.dataset.theme="` + value + `"`)
-}
-
-func watchHarnessTheme(win *application.WebviewWindow) {
-	if win == nil {
-		return
-	}
-	win.ExecJS(themeWatchJS)
-	startThemePoll(win)
-}
-
-var themePollStarted sync.Map
-
-func startThemePoll(win *application.WebviewWindow) {
-	if _, loaded := themePollStarted.LoadOrStore(win, true); loaded {
-		return
-	}
-	go func() {
-		defer themePollStarted.Delete(win)
-		pollWindowTheme(win)
-		tick := time.NewTicker(50 * time.Millisecond)
-		defer tick.Stop()
-		for range tick.C {
-			if win.NativeWindow() == nil {
-				return
-			}
-			pollWindowTheme(win)
-		}
-	}()
-}
+// harnessInitHTML exists so Windows registers Options.JS as a WebView2 Init
+// script. The shell then SetURL's the harness address (host-initiated), which
+// keeps dsh's SameSite=Strict launch cookie working. Do not location.replace
+// from this page — that is a cross-site hop and gets a 401.
+const harnessInitHTML = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body></body></html>`

@@ -1,22 +1,9 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
+	"strings"
 	"testing"
 )
-
-func TestParseThemeDark(t *testing.T) {
-	if dark, ok := parseThemeDark(map[string]any{"dark": true}); !ok || !dark {
-		t.Fatal("map dark=true")
-	}
-	if dark, ok := parseThemeDark(false); !ok || dark {
-		t.Fatal("bool false")
-	}
-	if _, ok := parseThemeDark("nope"); ok {
-		t.Fatal("unknown payload")
-	}
-}
 
 func TestParseUIThemePreference(t *testing.T) {
 	raw := "ui-onboarding:\n  welcomeNoticeVersion: x\nui-theme:\n  preference: dark\n"
@@ -31,20 +18,23 @@ func TestParseUIThemePreference(t *testing.T) {
 	}
 }
 
-func TestSaveLoadTheme(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("HOME", dir)
-	// themeFile uses UserConfigDir; isolate by writing through save/load after
-	// pointing XDG / HOME is OS-specific. Test the file format instead.
-	path := filepath.Join(dir, "ui-theme")
-	if err := os.WriteFile(path, []byte("dark\n"), 0o644); err != nil {
-		t.Fatal(err)
+func TestThemeWatchJSSkipsNullBody(t *testing.T) {
+	if !strings.Contains(themeWatchJS, `if (dark === null || dark === last) return`) {
+		t.Fatal("must not emit before body exists")
 	}
-	b, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
+	if !strings.Contains(themeWatchJS, `chrome.webview.postMessage`) {
+		t.Fatal("must emit via WebView2 postMessage on Windows")
 	}
-	if got := string(b); got != "dark\n" {
-		t.Fatalf("got %q", got)
+	if !strings.Contains(themeWatchJS, `webkit.messageHandlers.external.postMessage`) {
+		t.Fatal("must emit via WKWebView messageHandlers on macOS")
+	}
+	if strings.Contains(themeWatchJS, `setInterval`) || strings.Contains(themeWatchJS, `setTimeout`) {
+		t.Fatal("theme watch must be event-driven, not polled")
+	}
+}
+
+func TestHarnessInitHTMLHasNoRedirect(t *testing.T) {
+	if strings.Contains(harnessInitHTML, "location.") {
+		t.Fatal("init HTML must not navigate; the shell SetURL's the token URL")
 	}
 }

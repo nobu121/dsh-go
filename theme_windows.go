@@ -43,5 +43,3 @@ func applyNativeChrome(win *application.WebviewWindow, dark bool) {
 	_ = windows.DwmSetWindowAttribute(hwnd, windows.DWMWA_CAPTION_COLOR, unsafe.Pointer(&caption), 4)
 	_ = windows.DwmSetWindowAttribute(hwnd, windows.DWMWA_TEXT_COLOR, unsafe.Pointer(&text), 4)
 }
-
-func pollWindowTheme(*application.WebviewWindow) {}

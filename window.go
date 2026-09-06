@@ -59,6 +59,12 @@ func (s *shellWindows) showHarness(dshURL string) *application.WebviewWindow {
 	log.Printf("opening harness window")
 	next := newHarnessWindow(s.app, dshURL, from)
 	cap := newUpdateCapsule(s.app, next)
+	setThemeListener(func(dark bool) {
+		if !themeChanged(dark) {
+			return
+		}
+		applyChrome(next, dark)
+	})
 	next.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
 		s.app.Quit()
 	})
@@ -79,6 +85,7 @@ func (s *shellWindows) showHarness(dshURL string) *application.WebviewWindow {
 			prep.Hide()
 		}
 	}
+	// Init HTML + host SetURL(/?token=) + 303 to / .
 	onNav := func(*application.WindowEvent) {
 		if finishes.Add(1) >= 2 {
 			reveal()
@@ -99,23 +106,22 @@ func newPrepWindow(app *application.App) *application.WebviewWindow {
 		URL:                  "/",
 		AllowSimpleEventEmit: true,
 		Mac:                  macChrome(dark),
-		BackgroundColour:     application.NewRGB(255, 255, 255),
+		BackgroundColour:     themeBackground(dark),
 	})
 }
 
 func newHarnessWindow(app *application.App, dshURL string, from *application.WebviewWindow) *application.WebviewWindow {
 	dark := knownThemeDark()
-	css, js := harnessWindowSafeArea()
 	opts := application.WebviewWindowOptions{
-		Title:            "DeepSeek Harness",
-		Width:            1280,
-		Height:           800,
-		URL:              dshURL,
-		Hidden:           true,
-		CSS:              css,
-		JS:               js,
-		Mac:              macChrome(dark),
-		BackgroundColour: application.NewRGB(6, 7, 15),
+		Title:                "DeepSeek Harness",
+		Width:                1280,
+		Height:               800,
+		HTML:                 harnessInitHTML,
+		Hidden:               true,
+		JS:                   themeWatchJS,
+		AllowSimpleEventEmit: true,
+		Mac:                  macChrome(dark),
+		BackgroundColour:     themeBackground(dark),
 	}
 	if from != nil {
 		opts.Width, opts.Height = from.Size()
@@ -125,5 +131,7 @@ func newHarnessWindow(app *application.App, dshURL string, from *application.Web
 		x, y := from.Position()
 		win.SetPosition(x, y)
 	}
+	win.SetURL(dshURL)
+	applyNativeChrome(win, dark)
 	return win
 }
