@@ -112,6 +112,43 @@ func TestRuntimeAssetName(t *testing.T) {
 	}
 }
 
+func TestRuntimeBaseURLsEnvOverrides(t *testing.T) {
+	t.Setenv("DSH_RUNTIME_BASE_URL", "https://example.test/runtime/")
+	oldBase, oldRepo := RuntimeBaseURL, UpdateRepo
+	t.Cleanup(func() {
+		RuntimeBaseURL = oldBase
+		UpdateRepo = oldRepo
+	})
+	RuntimeBaseURL = "https://cnb.cool/example/-/releases/download/v1"
+	UpdateRepo = "acme/dsh-go"
+	got := runtimeBaseURLs()
+	if len(got) != 1 || got[0] != "https://example.test/runtime" {
+		t.Fatalf("got %#v", got)
+	}
+}
+
+func TestRuntimeBaseURLsFallbackGitHub(t *testing.T) {
+	t.Setenv("DSH_RUNTIME_BASE_URL", "")
+	oldBase, oldRepo := RuntimeBaseURL, UpdateRepo
+	t.Cleanup(func() {
+		RuntimeBaseURL = oldBase
+		UpdateRepo = oldRepo
+	})
+	RuntimeBaseURL = "https://cnb.cool/nobu121/dsh-go/-/releases/download/v" + currentVersion()
+	UpdateRepo = "nobu121/dsh-go"
+	got := runtimeBaseURLs()
+	if len(got) != 2 {
+		t.Fatalf("got %#v", got)
+	}
+	if got[0] != RuntimeBaseURL {
+		t.Fatalf("primary = %s", got[0])
+	}
+	wantGH := "https://github.com/nobu121/dsh-go/releases/download/v" + currentVersion()
+	if got[1] != wantGH {
+		t.Fatalf("fallback = %s, want %s", got[1], wantGH)
+	}
+}
+
 func fileSHA256(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {

@@ -33,7 +33,7 @@ dsh.version      产品 / 目标 @deepseek-ai/dsh 版本钉
 scripts/         sync / smoke / dist / runtime-zip 脚本
 build/darwin/    .app 的 Info.plist 与图标
 build/windows/   exe 资源（图标、清单、版本信息）
-.github/         探测 npm latest + GitHub Actions 打包/发版
+.github/         探测 npm latest + GitHub Actions 打包/发版（同步到 CNB）
 ```
 
 ## 开发
@@ -59,11 +59,12 @@ wails3 task package:runtime           # dsh-runtime-<os>-<arch>.zip
 
 macOS 写出 `bin/dsh-go.app`、给人下的 `bin/dsh-go-darwin-<arch>.dmg`，以及给应用内更新器用的高压缩 `bin/dsh-go-darwin-<arch>.zip`（顶层只有一个 `.app`）。Windows 在 `dsh-go-windows-<arch>.zip` 里放 `dsh-go/dsh-go.exe`。这些制品都不含 `dsh-runtime`。
 
-给人下的包以及更新器 / runtime 资产发在 **GitHub Releases**。日常开发远程仍是 CNB（`origin`）。
+给人下的包以及更新器 / runtime 资产发在 **GitHub Releases**，并同步到
+**CNB Releases**（`https://cnb.cool/nobu121/dsh-go/-/releases`）。日常开发远程仍是 CNB（`origin`）。
 
 发版构建会写入 `-X main.UpdateRepo=$GITHUB_REPOSITORY` 和
-`-X main.RuntimeBaseURL=https://github.com/<owner>/<repo>/releases/download/v<ver>`。
-本地构建两项都为空：跳过应用更新器，runtime 下载需要 `DSH_RUNTIME_BASE_URL`。
+`-X main.RuntimeBaseURL=https://cnb.cool/nobu121/dsh-go/-/releases/download/v<ver>`
+（GitHub 作为下载兜底）。本地构建两项都为空：跳过应用更新器，runtime 下载需要 `DSH_RUNTIME_BASE_URL`。
 
 ## 上游版本钉
 

@@ -6,6 +6,9 @@ on:
       version:
         required: true
         type: string
+    secrets:
+      CNB_TOKEN:
+        required: false
   workflow_dispatch:
     inputs:
       version:
@@ -54,7 +57,7 @@ jobs:
           fi
           printf '%s\n' "$ver" > dsh.version
           echo "APP_VERSION=$ver" >> "$GITHUB_ENV"
-          echo "RUNTIME_BASE_URL=https://github.com/${{ github.repository }}/releases/download/v${ver}" >> "$GITHUB_ENV"
+          echo "RUNTIME_BASE_URL=https://cnb.cool/nobu121/dsh-go/-/releases/download/v${ver}" >> "$GITHUB_ENV"
       - name: Sync dsh runtime
         shell: bash
         run: bash scripts/sync-dsh.sh
@@ -110,6 +113,17 @@ jobs:
               --notes "$notes" \
               --prerelease
           fi
+      - name: Sync release to CNB
+        env:
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+          CNB_REPO: nobu121/dsh-go
+          VERSION: ${{ inputs.version }}
+        run: |
+          ver="$VERSION"
+          if [ -z "$ver" ]; then
+            ver="$(tr -d '[:space:]' < dsh.version)"
+          fi
+          bash scripts/sync-release-to-cnb.sh "v${ver}" dist
       - name: Commit dsh.version
         if: inputs.version != ''
         run: |

@@ -43,7 +43,7 @@ dsh.version      product / target @deepseek-ai/dsh pin
 scripts/         sync / smoke / dist / runtime-zip helpers
 build/darwin/    Info.plist + icons for the .app
 build/windows/   exe resources (icon, manifest, version info)
-.github/         detect npm latest + GitHub Actions package/release
+.github/         detect npm latest + GitHub Actions package/release (mirrors to CNB)
 ```
 
 ## Development
@@ -74,12 +74,14 @@ and a max-deflate `bin/dsh-go-darwin-<arch>.zip` for the in-app updater
 `dsh-go-windows-<arch>.zip`. Neither artifact includes `dsh-runtime`.
 
 People-facing packages and updater / runtime assets are published on
-**GitHub Releases**. Daily development remote stays on CNB (`origin`).
+**GitHub Releases** and mirrored to **CNB Releases**
+(`https://cnb.cool/nobu121/dsh-go/-/releases`). Daily development remote
+stays on CNB (`origin`).
 
 Release builds set `-X main.UpdateRepo=$GITHUB_REPOSITORY` and
-`-X main.RuntimeBaseURL=https://github.com/<owner>/<repo>/releases/download/v<ver>`.
-Local builds leave both empty: the app updater is skipped, and runtime
-download needs `DSH_RUNTIME_BASE_URL`.
+`-X main.RuntimeBaseURL=https://cnb.cool/nobu121/dsh-go/-/releases/download/v<ver>`
+(GitHub is the download fallback). Local builds leave both empty: the
+app updater is skipped, and runtime download needs `DSH_RUNTIME_BASE_URL`.
 
 ## Upstream pin
 

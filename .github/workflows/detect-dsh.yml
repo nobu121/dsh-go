@@ -35,5 +35,6 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       version: ${{ needs.detect.outputs.version }}
+    secrets: inherit
     permissions:
       contents: write

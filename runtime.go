@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -21,10 +22,32 @@ const (
 )
 
 func runtimeBaseURL() string {
-	if u := strings.TrimSpace(os.Getenv("DSH_RUNTIME_BASE_URL")); u != "" {
-		return strings.TrimRight(u, "/")
+	urls := runtimeBaseURLs()
+	if len(urls) == 0 {
+		return ""
 	}
-	return strings.TrimRight(strings.TrimSpace(RuntimeBaseURL), "/")
+	return urls[0]
+}
+
+func runtimeBaseURLs() []string {
+	if u := strings.TrimSpace(os.Getenv("DSH_RUNTIME_BASE_URL")); u != "" {
+		return []string{strings.TrimRight(u, "/")}
+	}
+	seen := make(map[string]bool)
+	var out []string
+	add := func(u string) {
+		u = strings.TrimRight(strings.TrimSpace(u), "/")
+		if u == "" || seen[u] {
+			return
+		}
+		seen[u] = true
+		out = append(out, u)
+	}
+	add(RuntimeBaseURL)
+	if repo := strings.TrimSpace(UpdateRepo); repo != "" {
+		add("https://github.com/" + repo + "/releases/download/v" + currentVersion())
+	}
+	return out
 }
 
 func runtimeCacheDir() string {
@@ -94,10 +117,25 @@ func runtimeNodeCommand(root string) []string {
 }
 
 func fetchCachedRuntime(ctx context.Context, onPrep PrepReporter) error {
-	base := runtimeBaseURL()
-	if base == "" {
+	bases := runtimeBaseURLs()
+	if len(bases) == 0 {
 		return errors.New("DSH_RUNTIME_BASE_URL is empty")
 	}
+	var last error
+	for i, base := range bases {
+		if err := fetchCachedRuntimeFrom(ctx, onPrep, base); err != nil {
+			last = err
+			if i+1 < len(bases) {
+				log.Printf("runtime download from %s failed: %v; trying fallback", base, err)
+			}
+			continue
+		}
+		return nil
+	}
+	return last
+}
+
+func fetchCachedRuntimeFrom(ctx context.Context, onPrep PrepReporter, base string) error {
 	pin := currentVersion()
 	asset := runtimeAssetName()
 	zipURL := base + "/" + asset
