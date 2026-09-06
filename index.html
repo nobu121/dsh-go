@@ -1,23 +1,55 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="system">
 <head>
   <meta charset="utf-8" />
   <title>dsh-go</title>
   <style>
-    html, body { height: 100%; margin: 0; background: #fff; }
+    :root {
+      --bg: #fff;
+      --bar: #eee;
+      --fill: #111;
+      --muted: #888;
+      --btn-bg: #111;
+      --btn-fg: #fff;
+      --logo-filter: invert(1);
+    }
+    html[data-theme="dark"] {
+      --bg: #06070f;
+      --bar: #2a2b33;
+      --fill: #eee;
+      --muted: #9aa0a6;
+      --btn-bg: #eee;
+      --btn-fg: #111;
+      --logo-filter: none;
+    }
+    @media (prefers-color-scheme: dark) {
+      html[data-theme="system"] {
+        --bg: #06070f;
+        --bar: #2a2b33;
+        --fill: #eee;
+        --muted: #9aa0a6;
+        --btn-bg: #eee;
+        --btn-fg: #111;
+        --logo-filter: none;
+      }
+    }
+    html[data-theme="light"] { color-scheme: light; }
+    html[data-theme="dark"] { color-scheme: dark; }
+    html[data-theme="system"] { color-scheme: light dark; }
+    html, body { height: 100%; margin: 0; background: var(--bg); }
     main { height: 100%; display: grid; place-items: center; }
     .logo {
       width: 72px;
       height: 72px;
       display: block;
       margin: 0 auto;
-      filter: invert(1);
+      filter: var(--logo-filter);
     }
     .bar {
-      width: 160px; height: 3px; border-radius: 999px; background: #eee;
+      width: 160px; height: 3px; border-radius: 999px; background: var(--bar);
       overflow: hidden; margin: 22px auto 0;
     }
-    .bar > i { display: block; height: 100%; width: 0; background: #111; border-radius: inherit; }
+    .bar > i { display: block; height: 100%; width: 0; background: var(--fill); border-radius: inherit; }
     .bar.indeterminate > i {
       width: 36%;
       animation: bar-slide 1.1s ease-in-out infinite;
@@ -26,52 +58,77 @@
       0% { transform: translateX(-120%); }
       100% { transform: translateX(400%); }
     }
+    #msg {
+      margin: 14px auto 0; max-width: 280px; text-align: center;
+      color: var(--muted); font: 12px/1.45 system-ui, sans-serif;
+    }
     button {
       margin-top: 22px; border: 0; border-radius: 8px; padding: 8px 16px;
-      background: #111; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+      background: var(--btn-bg); color: var(--btn-fg); font-size: 13px; font-weight: 600; cursor: pointer;
     }
-    button[hidden], .bar[hidden] { display: none; }
+    button[hidden], .bar[hidden], #msg[hidden] { display: none; }
   </style>
 </head>
 <body>
   <main>
     <div>
       <img class="logo" src="/build/appicon.png" alt="" />
-      <div class="bar" id="bar" hidden><i id="fill"></i></div>
+      <div class="bar indeterminate" id="bar"><i id="fill"></i></div>
+      <p id="msg">正在初始化</p>
       <button id="retry" type="button" hidden>↻</button>
     </div>
   </main>
-  <script>
+  <script type="module">
+    import { Events } from "/wails/runtime.js";
+
+    const INIT = "正在初始化";
     const bar = document.getElementById("bar");
     const fill = document.getElementById("fill");
+    const msg = document.getElementById("msg");
     const retry = document.getElementById("retry");
 
-    window.wails?.Events?.On?.("dsh-go:prep", (e) => {
-      const p = e?.data ?? e ?? {};
+    function setTheme(pref) {
+      const lock = pref === "dark" || pref === "light" ? pref : "system";
+      document.documentElement.dataset.theme = lock;
+    }
+
+    function apply(p) {
       const stage = p.Stage ?? p.stage ?? "";
       const bytes = Number(p.Bytes ?? p.bytes ?? 0);
       const total = Number(p.Total ?? p.total ?? 0);
-      retry.hidden = stage !== "error";
-      if (stage === "download") {
-        bar.hidden = false;
-        if (total > 0) {
-          bar.classList.remove("indeterminate");
-          fill.style.width = Math.min(100, Math.round(bytes / total * 100)) + "%";
-        } else {
-          bar.classList.add("indeterminate");
-          fill.style.width = "";
-        }
-      } else {
+      const text = p.Message ?? p.message ?? "";
+      const err = stage === "error";
+      const hasProgress = stage === "download" && total > 0;
+      retry.hidden = !err;
+      if (err) {
         bar.hidden = true;
         bar.classList.remove("indeterminate");
+        msg.hidden = !text;
+        msg.textContent = text;
+        return;
       }
-    });
+      bar.hidden = false;
+      if (hasProgress) {
+        bar.classList.remove("indeterminate");
+        fill.style.width = Math.min(100, Math.round(bytes / total * 100)) + "%";
+        msg.hidden = true;
+        msg.textContent = "";
+        return;
+      }
+      bar.classList.add("indeterminate");
+      fill.style.width = "";
+      msg.hidden = false;
+      msg.textContent = INIT;
+    }
 
+    Events.On("dsh-go:theme-pref", (e) => setTheme(e?.data ?? e ?? "system"));
+    Events.On("dsh-go:prep", (e) => apply(e?.data ?? e ?? {}));
     retry.addEventListener("click", () => {
       retry.hidden = true;
-      window.wails?.Events?.Emit?.("dsh-go:prep-retry");
+      apply({});
+      Events.Emit("dsh-go:prep-retry");
     });
-    window.wails?.Events?.Emit?.("dsh-go:prep-ready");
+    Events.Emit("dsh-go:prep-ready");
   </script>
 </body>
 </html>

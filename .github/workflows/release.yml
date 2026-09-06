@@ -9,6 +9,18 @@ on:
     secrets:
       CNB_TOKEN:
         required: false
+      MACOS_CERTIFICATE_P12:
+        required: false
+      MACOS_CERTIFICATE_PASSWORD:
+        required: false
+      APPLE_ID:
+        required: false
+      APPLE_TEAM_ID:
+        required: false
+      APPLE_APP_SPECIFIC_PASSWORD:
+        required: false
+      MACOS_SIGN_IDENTITY:
+        required: false
   workflow_dispatch:
     inputs:
       version:
@@ -31,13 +43,12 @@ jobs:
           - os: macos-14
             artifact: darwin-arm64
             path: |
-              bin/dsh-go-darwin-arm64.zip
               bin/dsh-go-darwin-arm64.dmg
               bin/dsh-runtime-darwin-arm64.zip
           - os: windows-latest
             artifact: windows-amd64
             path: |
-              bin/dsh-go-windows-amd64.zip
+              bin/dsh-go-windows-amd64.exe
               bin/dsh-runtime-windows-amd64.zip
     runs-on: ${{ matrix.os }}
     steps:
@@ -67,8 +78,19 @@ jobs:
       - name: Install wails3
         shell: bash
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.16
+      - name: Install UPX
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install upx -y --no-progress
       - name: Package dist
         shell: bash
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
         run: wails3 task package:dist APP_VERSION="$APP_VERSION" UPDATE_REPO="$UPDATE_REPO" RUNTIME_BASE_URL="$RUNTIME_BASE_URL"
       - name: Package runtime
         shell: bash
@@ -92,7 +114,7 @@ jobs:
         run: |
           cd dist
           shopt -s nullglob
-          sha256sum dsh-go-*.zip dsh-go-*.dmg dsh-runtime-*.zip > SHA256SUMS
+          sha256sum dsh-go-*.dmg dsh-go-*.exe dsh-runtime-*.zip > SHA256SUMS
           cat SHA256SUMS
       - name: Publish GitHub prerelease
         env:
@@ -104,8 +126,10 @@ jobs:
             ver="$(tr -d '[:space:]' < dsh.version)"
           fi
           tag="v${ver}"
-          notes="Shell-only dsh-go ${ver} plus on-demand dsh-runtime zips for macOS (arm64) and Windows (amd64)."
+          notes="Shell-only dsh-go ${ver}: macOS DMG, Windows exe, plus on-demand dsh-runtime zips."
           if gh release view "$tag" >/dev/null 2>&1; then
+            gh release delete-asset "$tag" dsh-go-darwin-arm64.zip --yes || true
+            gh release delete-asset "$tag" dsh-go-windows-amd64.zip --yes || true
             gh release upload "$tag" dist/dsh-go-* dist/dsh-runtime-* dist/SHA256SUMS --clobber
           else
             gh release create "$tag" dist/dsh-go-* dist/dsh-runtime-* dist/SHA256SUMS \

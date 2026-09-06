@@ -25,12 +25,12 @@ tasks:
       - task: "{{.GOOS}}:package"
 
   package:update-zip:
-    summary: Packages updater zip (and macOS DMG)
+    summary: Packages people-facing dist (macOS DMG / Windows exe)
     cmds:
       - task: package:dist
 
   package:dist:
-    summary: Packages updater zip; macOS also writes an ULMO DMG
+    summary: Packages macOS DMG or Windows exe
     cmds:
       - task: '{{if eq OS "darwin"}}package{{else}}build{{end}}'
         vars:

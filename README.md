@@ -63,15 +63,17 @@ download path (`file:///…` works).
 ## Package
 
 ```sh
-wails3 task package:dist              # shell-only .app / zip / dmg
+wails3 task package:dist              # macOS DMG or Windows exe
 bash scripts/sync-dsh.sh
 wails3 task package:runtime           # dsh-runtime-<os>-<arch>.zip
 ```
 
-macOS writes `bin/dsh-go.app`, a people-facing `bin/dsh-go-darwin-<arch>.dmg`,
-and a max-deflate `bin/dsh-go-darwin-<arch>.zip` for the in-app updater
-(single top-level `.app`). Windows writes `dsh-go/dsh-go.exe` in
-`dsh-go-windows-<arch>.zip`. Neither artifact includes `dsh-runtime`.
+macOS writes `bin/dsh-go.app` and a people-facing `bin/dsh-go-darwin-<arch>.dmg`.
+Windows writes a UPX-compressed `bin/dsh-go-windows-<arch>.exe`. Neither
+artifact includes `dsh-runtime`. To skip the macOS Gatekeeper prompt, add
+Apple Developer ID + notary secrets (`MACOS_CERTIFICATE_P12`,
+`MACOS_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_TEAM_ID`,
+`APPLE_APP_SPECIFIC_PASSWORD`) so Release can sign and notarize the DMG.
 
 People-facing packages and updater / runtime assets are published on
 **GitHub Releases** and mirrored to **CNB Releases**

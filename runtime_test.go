@@ -9,7 +9,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func writeRuntimeZip(t *testing.T, zipPath, version string) {
@@ -102,6 +104,29 @@ func TestChecksumForAsset(t *testing.T) {
 	got, ok := checksumForAsset(sums, "dsh-runtime-darwin-arm64.zip")
 	if !ok || got != "abc" {
 		t.Fatalf("got %q ok=%v", got, ok)
+	}
+}
+
+func TestThrottlePrepDownload(t *testing.T) {
+	var n atomic.Int32
+	fn := throttlePrep(func(PrepProgress) { n.Add(1) }, 40*time.Millisecond)
+	fn(PrepProgress{Stage: "download", Bytes: 1, Total: 100})
+	fn(PrepProgress{Stage: "download", Bytes: 2, Total: 100})
+	if n.Load() != 1 {
+		t.Fatalf("dropped intermediate = %d", n.Load())
+	}
+	time.Sleep(50 * time.Millisecond)
+	fn(PrepProgress{Stage: "download", Bytes: 3, Total: 100})
+	if n.Load() != 2 {
+		t.Fatalf("after interval = %d", n.Load())
+	}
+	fn(PrepProgress{Stage: "download", Bytes: 100, Total: 100})
+	if n.Load() != 3 {
+		t.Fatalf("final flush = %d", n.Load())
+	}
+	fn(PrepProgress{Stage: "unpack"})
+	if n.Load() != 4 {
+		t.Fatalf("non-download = %d", n.Load())
 	}
 }
 

@@ -99,15 +99,18 @@ func (s *shellWindows) showHarness(dshURL string) *application.WebviewWindow {
 
 func newPrepWindow(app *application.App) *application.WebviewWindow {
 	dark := knownThemeDark()
-	return app.Window.NewWithOptions(application.WebviewWindowOptions{
+	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:                "DeepSeek Harness",
 		Width:                1280,
 		Height:               800,
 		URL:                  "/",
 		AllowSimpleEventEmit: true,
 		Mac:                  macChrome(dark),
+		Windows:              application.WindowsWindow{Theme: windowsTheme()},
 		BackgroundColour:     themeBackground(dark),
 	})
+	applyNativeChrome(win, dark)
+	return win
 }
 
 func newHarnessWindow(app *application.App, dshURL string, from *application.WebviewWindow) *application.WebviewWindow {
@@ -121,6 +124,7 @@ func newHarnessWindow(app *application.App, dshURL string, from *application.Web
 		JS:                   themeWatchJS,
 		AllowSimpleEventEmit: true,
 		Mac:                  macChrome(dark),
+		Windows:              application.WindowsWindow{Theme: windowsTheme()},
 		BackgroundColour:     themeBackground(dark),
 	}
 	if from != nil {

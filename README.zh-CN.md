@@ -52,12 +52,12 @@ go build -mod=mod -o dsh-go .
 ## 打包
 
 ```sh
-wails3 task package:dist              # 纯壳 .app / zip / dmg
+wails3 task package:dist              # macOS DMG 或 Windows exe
 bash scripts/sync-dsh.sh
 wails3 task package:runtime           # dsh-runtime-<os>-<arch>.zip
 ```
 
-macOS 写出 `bin/dsh-go.app`、给人下的 `bin/dsh-go-darwin-<arch>.dmg`，以及给应用内更新器用的高压缩 `bin/dsh-go-darwin-<arch>.zip`（顶层只有一个 `.app`）。Windows 在 `dsh-go-windows-<arch>.zip` 里放 `dsh-go/dsh-go.exe`。这些制品都不含 `dsh-runtime`。
+macOS 写出 `bin/dsh-go.app` 和给人下的 `bin/dsh-go-darwin-<arch>.dmg`。Windows 写出 UPX 压缩后的 `bin/dsh-go-windows-<arch>.exe`。这些制品都不含 `dsh-runtime`。要去掉 macOS「隐私与安全性 / 仍要打开」提示，需要在 GitHub 配 Apple Developer ID 与公证密钥（`MACOS_CERTIFICATE_P12`、`MACOS_CERTIFICATE_PASSWORD`、`APPLE_ID`、`APPLE_TEAM_ID`、`APPLE_APP_SPECIFIC_PASSWORD`），Release 才会签名并公证 DMG。
 
 给人下的包以及更新器 / runtime 资产发在 **GitHub Releases**，并同步到
 **CNB Releases**（`https://cnb.cool/nobu121/dsh-go/-/releases`）。日常开发远程仍是 CNB（`origin`）。

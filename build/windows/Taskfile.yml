@@ -30,7 +30,7 @@ tasks:
       GOARCH: '{{.ARCH | default ARCH}}'
 
   package:
-    summary: Builds the Windows exe (updater zip is package:update-zip)
+    summary: Builds the Windows exe
     cmds:
       - task: build
 

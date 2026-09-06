@@ -12,6 +12,7 @@ import (
 const (
 	themeDarkEvent  = "dsh-go:theme-dark"
 	themeLightEvent = "dsh-go:theme-light"
+	themePrefEvent  = "dsh-go:theme-pref"
 )
 
 // themeWatchJS observes harness ui-theme's body[data-ds-dark-theme] and pushes
@@ -96,39 +97,6 @@ var (
 	themeKnown bool
 )
 
-func themeFile() string {
-	cfg, err := os.UserConfigDir()
-	if err != nil {
-		return filepath.Join(os.TempDir(), "dsh-go", "ui-theme")
-	}
-	return filepath.Join(cfg, "dsh-go", "ui-theme")
-}
-
-func loadSavedTheme() (bool, bool) {
-	b, err := os.ReadFile(themeFile())
-	if err != nil {
-		return false, false
-	}
-	switch strings.TrimSpace(string(b)) {
-	case "dark":
-		return true, true
-	case "light":
-		return false, true
-	default:
-		return false, false
-	}
-}
-
-func saveTheme(dark bool) {
-	path := themeFile()
-	_ = os.MkdirAll(filepath.Dir(path), 0o755)
-	val := "light"
-	if dark {
-		val = "dark"
-	}
-	_ = os.WriteFile(path, []byte(val+"\n"), 0o644)
-}
-
 func settingsYAMLPath() string {
 	return filepath.Join(defaultHomeDir(), "settings.yaml")
 }
@@ -162,20 +130,20 @@ func parseUIThemePreference(raw string) string {
 	return ""
 }
 
-func dshPreferenceDark() (bool, bool) {
+// lockedThemePreference is the user's explicit ui-theme lock.
+// Missing, empty, or "system" means follow the OS — not the last-seen chrome.
+func lockedThemePreference() string {
 	b, err := os.ReadFile(settingsYAMLPath())
 	if err != nil {
-		return false, false
+		return "system"
 	}
 	switch parseUIThemePreference(string(b)) {
 	case "dark":
-		return true, true
+		return "dark"
 	case "light":
-		return false, true
-	case "system":
-		return systemDark(), true
+		return "light"
 	default:
-		return false, false
+		return "system"
 	}
 }
 
@@ -185,17 +153,14 @@ func knownThemeDark() bool {
 	if themeKnown {
 		return themeDark
 	}
-	if dark, ok := dshPreferenceDark(); ok {
-		themeDark = dark
-		themeKnown = true
-		return dark
+	switch lockedThemePreference() {
+	case "dark":
+		themeDark = true
+	case "light":
+		themeDark = false
+	default:
+		themeDark = systemDark()
 	}
-	if dark, ok := loadSavedTheme(); ok {
-		themeDark = dark
-		themeKnown = true
-		return dark
-	}
-	themeDark = systemDark()
 	themeKnown = true
 	return themeDark
 }
@@ -205,7 +170,6 @@ func rememberTheme(dark bool) {
 	themeDark = dark
 	themeKnown = true
 	themeMu.Unlock()
-	saveTheme(dark)
 }
 
 func themeChanged(dark bool) bool {
@@ -234,12 +198,27 @@ func macChrome(dark bool) application.MacWindow {
 	}
 }
 
+func windowsTheme() application.Theme {
+	switch lockedThemePreference() {
+	case "dark":
+		return application.Dark
+	case "light":
+		return application.Light
+	default:
+		return application.SystemDefault
+	}
+}
+
 func applyChrome(win *application.WebviewWindow, dark bool) {
 	if win == nil {
 		return
 	}
 	win.SetBackgroundColour(themeBackground(dark))
-	applyNativeChrome(win, dark)
+	// DWM title-bar attributes must be set on the UI thread; a direct call
+	// from an event goroutine leaves the caption stuck on the OS theme.
+	application.InvokeAsync(func() {
+		applyNativeChrome(win, dark)
+	})
 }
 
 // harnessInitHTML exists so Windows registers Options.JS as a WebView2 Init

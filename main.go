@@ -73,6 +73,7 @@ func main() {
 	})
 
 	app.Event.On(prepReadyEvent, func(*application.CustomEvent) {
+		app.Event.Emit(themePrefEvent, lockedThemePreference())
 		if url := prep.readyURL(); url != "" {
 			return
 		}
@@ -110,6 +111,15 @@ func main() {
 				c.show(rel.Version)
 			}
 		})
+		app.Event.On(manualUpdateEvt, func(e *application.CustomEvent) {
+			ver, _ := e.Data.(string)
+			if ver == "" {
+				return
+			}
+			if c := ui.capsule; c != nil {
+				c.show(ver)
+			}
+		})
 		go runUpdateLoop(ctx, app)
 	}
 
@@ -117,6 +127,12 @@ func main() {
 		c := ui.capsule
 		if c != nil && c.kind == capsuleKindDSH {
 			go applyDSHUpdate(ctx, app, ui, dsh, c)
+			return
+		}
+		if u := takeManualUpdateURL(); u != "" {
+			if err := openURL(u); err != nil {
+				log.Printf("open update: %v", err)
+			}
 			return
 		}
 		if err := app.Updater.Restart(ctx); err != nil {

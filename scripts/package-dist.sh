@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Build shell-only release artifacts:
-#   macOS  — ULMO DMG for people, max-deflate zip for the updater
-#   Windows — max-deflate zip (portable folder, also the updater asset)
+# Build people-facing release artifacts:
+#   macOS  — ULMO DMG (signed/notarized when Apple secrets are present)
+#   Windows — UPX-compressed standalone exe
 # Runtime zips are produced separately by scripts/package-runtime.sh.
 set -euo pipefail
 
@@ -21,20 +21,6 @@ stage="$(mktemp -d)"
 cleanup() { rm -rf "$stage"; }
 trap cleanup EXIT
 
-write_zip_max() {
-  local src_dir="$1" entry="$2" out="$3"
-  rm -f "$out"
-  (
-    cd "$src_dir"
-    if command -v zip >/dev/null; then
-      zip -9 -qr -y "$out" "$entry"
-    else
-      python3 -c "import shutil,sys; shutil.make_archive(sys.argv[1], 'zip', sys.argv[2], sys.argv[3])" \
-        "${out%.zip}" "$src_dir" "$entry"
-    fi
-  )
-}
-
 if [[ "$os" == "Darwin" ]]; then
   app="$BIN_DIR/${APP_NAME}.app"
   if [[ ! -d "$app" ]]; then
@@ -42,19 +28,18 @@ if [[ "$os" == "Darwin" ]]; then
     exit 1
   fi
 
-  zip_asset="${APP_NAME}-darwin-${goarch}.zip"
-  # Single top-level entry (.app) for the Wails updater.
-  if ditto -c -k --keepParent --zlibCompressionLevel 9 "$app" "$BIN_DIR/$zip_asset" 2>/dev/null; then
-    :
-  else
-    write_zip_max "$BIN_DIR" "${APP_NAME}.app" "$BIN_DIR/$zip_asset"
+  if [[ -n "${MACOS_CERTIFICATE_P12:-}" ]]; then
+    bash "$ROOT/scripts/macos-sign-notarize.sh" "$app"
   fi
-  echo "$BIN_DIR/$zip_asset"
 
   dmg_asset="${APP_NAME}-darwin-${goarch}.dmg"
   mkdir -p "$stage/dmg"
   ditto "$app" "$stage/dmg/${APP_NAME}.app"
   ln -s /Applications "$stage/dmg/Applications"
+  if [[ -z "${MACOS_CERTIFICATE_P12:-}" ]]; then
+    printf '%s\n' '若提示“无法打开 / 已损坏”：按住 Control 点图标选“打开”，或到 系统设置 → 隐私与安全性 点“仍要打开”。' \
+      > "$stage/dmg/打开说明.txt"
+  fi
   rm -f "$BIN_DIR/$dmg_asset"
   hdiutil create \
     -volname "$APP_NAME" \
@@ -62,6 +47,10 @@ if [[ "$os" == "Darwin" ]]; then
     -ov \
     -format ULMO \
     -o "$BIN_DIR/$dmg_asset" >/dev/null
+
+  if [[ -n "${MACOS_CERTIFICATE_P12:-}" ]]; then
+    bash "$ROOT/scripts/macos-sign-notarize.sh" "$app" "$BIN_DIR/$dmg_asset"
+  fi
   echo "$BIN_DIR/$dmg_asset"
 
 elif [[ "$os" == MINGW* || "$os" == MSYS* || "$os" == CYGWIN* || "$os" == Windows_NT ]]; then
@@ -70,10 +59,13 @@ elif [[ "$os" == MINGW* || "$os" == MSYS* || "$os" == CYGWIN* || "$os" == Window
     echo "missing $exe; build the Windows binary first" >&2
     exit 1
   fi
-  mkdir -p "$stage/${APP_NAME}"
-  cp "$exe" "$stage/${APP_NAME}/${APP_NAME}.exe"
-  asset="${APP_NAME}-windows-${goarch}.zip"
-  write_zip_max "$stage" "$APP_NAME" "$BIN_DIR/$asset"
+  if command -v upx >/dev/null; then
+    upx --best --lzma "$exe"
+  else
+    echo "package-dist: upx not on PATH; publishing uncompressed exe" >&2
+  fi
+  asset="${APP_NAME}-windows-${goarch}.exe"
+  cp "$exe" "$BIN_DIR/$asset"
   echo "$BIN_DIR/$asset"
 else
   echo "package-dist: unsupported OS $os" >&2

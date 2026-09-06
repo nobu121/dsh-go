@@ -9,13 +9,30 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
+	"time"
 )
+
+var runtimeHTTPClient = &http.Client{
+	Transport: &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   15 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		TLSHandshakeTimeout:   15 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+		IdleConnTimeout:       90 * time.Second,
+	},
+}
 
 const (
 	runtimeDirName = "dsh-runtime"
@@ -135,11 +152,35 @@ func fetchCachedRuntime(ctx context.Context, onPrep PrepReporter) error {
 	return last
 }
 
+func throttlePrep(fn PrepReporter, minInterval time.Duration) PrepReporter {
+	if fn == nil {
+		return nil
+	}
+	var mu sync.Mutex
+	var last time.Time
+	return func(p PrepProgress) {
+		if p.Stage != "download" {
+			fn(p)
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		now := time.Now()
+		done := p.Total > 0 && p.Bytes >= p.Total
+		if !done && !last.IsZero() && now.Sub(last) < minInterval {
+			return
+		}
+		last = now
+		fn(p)
+	}
+}
+
 func fetchCachedRuntimeFrom(ctx context.Context, onPrep PrepReporter, base string) error {
 	pin := currentVersion()
 	asset := runtimeAssetName()
 	zipURL := base + "/" + asset
 	dest := runtimeCacheDir()
+	onPrep = throttlePrep(onPrep, 150*time.Millisecond)
 
 	reportPrep(onPrep, PrepProgress{Stage: "download", Message: "正在下载 DeepSeek Harness…"})
 
@@ -258,7 +299,7 @@ func openRemote(ctx context.Context, raw string) (io.ReadCloser, int64, error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := runtimeHTTPClient.Do(req)
 	if err != nil {
 		return nil, 0, err
 	}

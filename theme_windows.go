@@ -6,6 +6,7 @@ import (
 	"unsafe"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/w32"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
@@ -24,22 +25,51 @@ func systemDark() bool {
 }
 
 func applyNativeChrome(win *application.WebviewWindow, dark bool) {
-	hwnd := windows.HWND(uintptr(win.NativeWindow()))
+	if win == nil {
+		return
+	}
+	hwnd := w32.HWND(uintptr(win.NativeWindow()))
 	if hwnd == 0 {
 		return
 	}
+	raw := uintptr(hwnd)
+
+	// Both attribute numbers: pre-20H1 hosts only honor 19.
 	var immersive uint32
 	if dark {
 		immersive = 1
 	}
-	_ = windows.DwmSetWindowAttribute(hwnd, windows.DWMWA_USE_IMMERSIVE_DARK_MODE, unsafe.Pointer(&immersive), 4)
+	_ = windows.DwmSetWindowAttribute(windows.HWND(raw), 19, unsafe.Pointer(&immersive), 4)
+	_ = windows.DwmSetWindowAttribute(windows.HWND(raw), windows.DWMWA_USE_IMMERSIVE_DARK_MODE, unsafe.Pointer(&immersive), 4)
+
+	w32.SetTheme(raw, dark)
+	var useDark int32
+	if dark {
+		useDark = 1
+	}
+	data := w32.WINDOWCOMPOSITIONATTRIBDATA{
+		Attrib: w32.WCA_USEDARKMODECOLORS,
+		PvData: unsafe.Pointer(&useDark),
+		CbData: unsafe.Sizeof(useDark),
+	}
+	w32.SetWindowCompositionAttribute(hwnd, &data)
 
 	caption := uint32(0x00FFFFFF)
 	text := uint32(0x00111111)
+	border := uint32(0x00FFFFFF)
 	if dark {
 		caption = 0x000F0706
 		text = 0x00EEEEEE
+		border = 0x000F0706
 	}
-	_ = windows.DwmSetWindowAttribute(hwnd, windows.DWMWA_CAPTION_COLOR, unsafe.Pointer(&caption), 4)
-	_ = windows.DwmSetWindowAttribute(hwnd, windows.DWMWA_TEXT_COLOR, unsafe.Pointer(&text), 4)
+	w32.SetTitleBarColour(raw, caption)
+	w32.SetTitleTextColour(raw, text)
+	w32.SetBorderColour(raw, border)
+
+	if w32.GetForegroundWindow() == hwnd {
+		w32.SendMessage(hwnd, w32.WM_NCACTIVATE, 0, 0)
+		w32.SendMessage(hwnd, w32.WM_NCACTIVATE, 1, 0)
+	}
+	w32.SetWindowPos(hwnd, 0, 0, 0, 0, 0,
+		w32.SWP_NOMOVE|w32.SWP_NOSIZE|w32.SWP_NOZORDER|w32.SWP_NOACTIVATE|w32.SWP_FRAMECHANGED)
 }

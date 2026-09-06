@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"io"
 	"io/fs"
 	"log"
 	"net/url"
@@ -361,25 +362,29 @@ func (d *DSH) launchOnce(ctx context.Context) (bool, error) {
 	cmd.Env = append(os.Environ(), "DSH_HOME="+d.config.Home)
 	applyProcAttr(cmd)
 
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return false, err
-	}
-	cmd.Stderr = os.Stderr
+	pr, pw := io.Pipe()
+	cmd.Stdout = pw
+	cmd.Stderr = pw
 
 	d.mu.Lock()
 	d.cmd = cmd
 	d.mu.Unlock()
 
 	if err := cmd.Start(); err != nil {
+		_ = pw.Close()
 		return false, err
 	}
+	waitErr := make(chan error, 1)
+	go func() {
+		waitErr <- cmd.Wait()
+		_ = pw.Close()
+	}()
 	stopReap := startDeathReaper(cmd.Process.Pid)
 	defer stopReap()
 	log.Printf("dsh started: %s", strings.Join(argv, " "))
 
 	ready := false
-	sc := bufio.NewScanner(stdout)
+	sc := bufio.NewScanner(pr)
 	sc.Buffer(make([]byte, 64*1024), 64*1024)
 	for sc.Scan() {
 		line := sc.Text()
@@ -395,7 +400,7 @@ func (d *DSH) launchOnce(ctx context.Context) (bool, error) {
 			}
 		}
 	}
-	err = cmd.Wait()
+	err = <-waitErr
 	if err != nil && ctx.Err() == nil {
 		log.Printf("dsh exited with error: %v", err)
 	}
