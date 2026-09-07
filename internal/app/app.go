@@ -43,7 +43,8 @@ func Run(assets embed.FS) {
 	loadStartupLocale()
 
 	ui := &shellWindows{}
-	app := application.New(application.Options{
+	var app *application.App
+	app = application.New(application.Options{
 		Name:        "dsh-go",
 		Description: "A Wails v3 desktop shell for DeepSeek Harness",
 		Assets: application.AssetOptions{
@@ -61,6 +62,9 @@ func Run(assets embed.FS) {
 					win.Focus()
 				}
 			},
+		},
+		RawMessageHandler: func(_ application.Window, message string, _ *application.OriginInfo) {
+			handleOpenExternalMessage(app, message)
 		},
 	})
 	ui.app = app

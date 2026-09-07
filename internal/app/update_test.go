@@ -107,6 +107,19 @@ func TestUnpackDesktopExeMissing(t *testing.T) {
 	}
 }
 
+func TestDesktopUpdateScriptDeletesItselfQuietly(t *testing.T) {
+	s := desktopUpdateScript(`C:\AppData\dsh-go\dsh-go.exe`, `C:\Temp\new.exe`)
+	if !strings.Contains(s, "@echo off") {
+		t.Fatal("update script must hide its own echo")
+	}
+	if !strings.Contains(s, `(goto) 2>nul & del "%~f0"`) {
+		t.Fatal("self-delete must not leave a visible cmd after the batch is gone")
+	}
+	if strings.Contains(s, "\ndel \"%") || strings.Contains(s, "\r\ndel \"%") {
+		t.Fatal("bare del of the running script opens a console with 找不到批处理文件")
+	}
+}
+
 func TestMirrorName(t *testing.T) {
 	if got := mirrorName("https://cnb.cool/nobu121/dsh-go/-/releases/download/v1"); got != "CNB" {
 		t.Fatalf("cnb = %s", got)

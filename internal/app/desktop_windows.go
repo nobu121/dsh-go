@@ -35,24 +35,11 @@ func installDesktopPackage(path string) error {
 		return err
 	}
 	script := filepath.Join(os.TempDir(), "dsh-go-update.cmd")
-	body := fmt.Sprintf(""+
-		"@echo off\r\n"+
-		"set \"CUR=%s\"\r\n"+
-		"set \"NEW=%s\"\r\n"+
-		"for /l %%%%i in (1,1,30) do (\r\n"+
-		"  move /y \"%%CUR%%\" \"%%CUR%%.old\" >nul 2>nul && goto replaced\r\n"+
-		"  ping -n 2 127.0.0.1 >nul\r\n"+
-		")\r\n"+
-		"exit /b 1\r\n"+
-		":replaced\r\n"+
-		"move /y \"%%NEW%%\" \"%%CUR%%\" >nul\r\n"+
-		"start \"\" \"%%CUR%%\"\r\n"+
-		"del \"%%~f0\"\r\n",
-		current, src)
-	if err := os.WriteFile(script, []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(script, []byte(desktopUpdateScript(current, src)), 0o644); err != nil {
 		return err
 	}
-	cmd := exec.Command("cmd", "/C", "start", "", script)
+	cmd := exec.Command("cmd", "/C", script)
+	cmd.SysProcAttr = hiddenProcAttr(0)
 	return cmd.Start()
 }
 

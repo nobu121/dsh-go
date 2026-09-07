@@ -141,7 +141,7 @@ func newHarnessWindow(app *application.App, dshURL string, from *application.Web
 		Height:               800,
 		HTML:                 harnessInitHTML,
 		Hidden:               true,
-		JS:                   themeWatchJS,
+		JS:                   harnessInitJS(),
 		AllowSimpleEventEmit: true,
 		Mac:                  macChrome(dark),
 		Windows: application.WindowsWindow{

@@ -7,7 +7,7 @@ info:
   description: "A Wails v3 desktop shell for DeepSeek Harness"
   copyright: "© 2026, dsh-go"
   comments: "DeepSeek Harness desktop shell"
-  version: "0.3.1"
+  version: "0.3.2"
 
 dev_mode:
   root_path: .

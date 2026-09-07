@@ -163,6 +163,26 @@ func downloadReleaseAsset(ctx context.Context, base, asset, dest string, onPrep 
 	return nil
 }
 
+// desktopUpdateScript replaces the running Windows exe after it exits, then
+// relaunches it. (goto) 2>nul lets the .cmd delete itself without leaving a
+// visible "找不到批处理文件" console.
+func desktopUpdateScript(current, src string) string {
+	return fmt.Sprintf(""+
+		"@echo off\r\n"+
+		"set \"CUR=%s\"\r\n"+
+		"set \"NEW=%s\"\r\n"+
+		"for /l %%%%i in (1,1,30) do (\r\n"+
+		"  move /y \"%%CUR%%\" \"%%CUR%%.old\" >nul 2>nul && goto replaced\r\n"+
+		"  ping -n 2 127.0.0.1 >nul\r\n"+
+		")\r\n"+
+		"exit /b 1\r\n"+
+		":replaced\r\n"+
+		"move /y \"%%NEW%%\" \"%%CUR%%\" >nul\r\n"+
+		"start \"\" \"%%CUR%%\"\r\n"+
+		"(goto) 2>nul & del \"%%~f0\"\r\n",
+		current, src)
+}
+
 func unpackDesktopExe(zipPath string) (string, error) {
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
