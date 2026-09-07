@@ -27,29 +27,6 @@ keep="${keep_os}-${keep_arch}"
 
 before="$(du -sk "$DEST" | awk '{print $1}')"
 
-node_bin=""
-# Git Bash treats "node" as executable when node.exe is beside it, so check
-# the real Windows file first.
-if [[ -f "$DEST/node.exe" ]]; then
-  node_bin="$DEST/node.exe"
-elif [[ -f "$DEST/node" || -x "$DEST/node" ]]; then
-  node_bin="$DEST/node"
-fi
-# Keep the official Node signature on macOS. strip/UPX would break it and
-# force an ad-hoc re-sign; Windows has no equivalent gate.
-if [[ -n "$node_bin" && "$keep_os" != "darwin" ]]; then
-  if [[ "$keep_os" != "win32" ]] && command -v strip >/dev/null; then
-    strip -S "$node_bin" || true
-  fi
-  if command -v upx >/dev/null; then
-    if ! upx -t "$node_bin" >/dev/null 2>&1; then
-      upx --best --lzma "$node_bin" || echo "prune-dsh: upx failed on $node_bin; leaving uncompressed" >&2
-    fi
-  else
-    echo "prune-dsh: upx not on PATH; leaving node uncompressed" >&2
-  fi
-fi
-
 NM="$DEST/node_modules"
 if [[ -d "$NM" ]]; then
   find "$NM" \( \
