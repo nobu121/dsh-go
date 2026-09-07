@@ -1,0 +1,135 @@
+name: Release dsh runtime
+
+# Publishes the dsh runtime channel: per-platform zips plus the runtime.json
+# the client reads to learn the current dsh version. Everything lands on the
+# fixed runtime-latest tag, so no client rebuild is involved and installed
+# clients pick the new runtime up on their next check.
+#
+# The GitHub release is a prerelease on purpose: the client updater reads
+# /releases/latest, which ignores prereleases, so this channel can never be
+# mistaken for a client update.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: false
+        type: string
+    secrets:
+      CNB_TOKEN:
+        required: false
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "@deepseek-ai/dsh version (empty = dsh.version)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            artifact: darwin-arm64
+          - os: windows-latest
+            artifact: windows-amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Resolve dsh version
+        shell: bash
+        run: |
+          ver="${{ inputs.version }}"
+          if [ -z "$ver" ]; then
+            ver="$(tr -d '[:space:]' < dsh.version)"
+          fi
+          if [ -z "$ver" ]; then
+            echo "no dsh version to publish" >&2
+            exit 1
+          fi
+          echo "DSH_VERSION=$ver" >> "$GITHUB_ENV"
+      - name: Sync dsh runtime
+        shell: bash
+        run: bash scripts/sync-dsh.sh "$DSH_VERSION"
+      - name: Smoke dsh runtime
+        shell: bash
+        run: bash scripts/smoke-dsh.sh
+      - name: Package runtime
+        shell: bash
+        run: bash scripts/package-runtime.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            bin/dsh-runtime-*.zip
+            bin/runtime.json
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Resolve dsh version
+        run: |
+          ver="${{ inputs.version }}"
+          if [ -z "$ver" ]; then
+            ver="$(tr -d '[:space:]' < dsh.version)"
+          fi
+          echo "DSH_VERSION=$ver" >> "$GITHUB_ENV"
+      - name: Checksums and manifest
+        run: |
+          cd dist
+          sha256sum dsh-runtime-*.zip > SHA256SUMS
+          cat SHA256SUMS
+          if [ ! -f runtime.json ]; then
+            printf '{\n  "version": "%s",\n  "updated": "%s"\n}\n' \
+              "$DSH_VERSION" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > runtime.json
+          fi
+          cat runtime.json
+      - name: Publish runtime channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=runtime-latest
+          notes="Rolling dsh runtime channel. Current: ${DSH_VERSION}. Consumed by the dsh-go client; not a client release."
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --title "dsh runtime channel" \
+              --notes "$notes" \
+              --prerelease
+          else
+            gh release edit "$tag" --notes "$notes" --prerelease --latest=false
+          fi
+          gh release upload "$tag" dist/dsh-runtime-*.zip dist/SHA256SUMS --clobber
+          gh release upload "$tag" dist/runtime.json --clobber
+      - name: Sync runtime channel to CNB
+        env:
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+          CNB_REPO: nobu121/dsh-go
+          CNB_PRERELEASE: "true"
+          CNB_MAKE_LATEST: "false"
+        run: |
+          export CNB_NOTES="Rolling dsh runtime channel. Current: ${DSH_VERSION}."
+          bash scripts/sync-release-to-cnb.sh runtime-latest dist
+      - name: Commit dsh.version
+        run: |
+          printf '%s\n' "$DSH_VERSION" > dsh.version
+          git add dsh.version
+          git diff --cached --quiet && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Bundle dsh ${DSH_VERSION}"
+          git push

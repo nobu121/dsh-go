@@ -1,15 +1,13 @@
-name: Release
+name: Release client
 
-# One release tag ships the client (DMG/exe) and the matching dsh runtime
-# zips. The in-app updater installs both with one button.
+# Ships the desktop client only. The dsh runtime rides the separate
+# runtime-latest channel (release-runtime.yml), so an upstream dsh bump needs
+# no client build, no notarization and no forced update for users.
 
 on:
   workflow_call:
     inputs:
       version:
-        required: false
-        type: string
-      dsh_version:
         required: false
         type: string
     secrets:
@@ -33,10 +31,6 @@ on:
         description: client version (empty = app.version)
         required: false
         type: string
-      dsh_version:
-        description: "@deepseek-ai/dsh version (empty = dsh.version)"
-        required: false
-        type: string
 
 permissions:
   contents: write
@@ -52,26 +46,17 @@ jobs:
         include:
           - os: macos-14
             artifact: darwin-arm64
-            path: |
-              bin/dsh-go-darwin-arm64.dmg
-              bin/dsh-runtime-darwin-arm64.zip
-              bin/runtime.json
+            path: bin/dsh-go-darwin-arm64.dmg
           - os: windows-latest
             artifact: windows-amd64
-            path: |
-              bin/dsh-go-windows-amd64.exe
-              bin/dsh-runtime-windows-amd64.zip
-              bin/runtime.json
+            path: bin/dsh-go-windows-amd64.exe
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25.x"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-      - name: Pin versions
+      - name: Resolve client version
         shell: bash
         run: |
           ver="${{ inputs.version }}"
@@ -80,18 +65,8 @@ jobs:
           fi
           printf '%s\n' "$ver" > app.version
           bash scripts/sync-app-version.sh "$ver"
-          dsh="${{ inputs.dsh_version }}"
-          if [ -n "$dsh" ]; then
-            printf '%s\n' "$dsh" > dsh.version
-          fi
           echo "APP_VERSION=$ver" >> "$GITHUB_ENV"
-          echo "RUNTIME_BASE_URL=https://cnb.cool/nobu121/dsh-go/-/releases/download/v${ver}" >> "$GITHUB_ENV"
-      - name: Sync dsh runtime
-        shell: bash
-        run: bash scripts/sync-dsh.sh
-      - name: Smoke dsh runtime
-        shell: bash
-        run: bash scripts/smoke-dsh.sh
+          echo "RUNTIME_BASE_URL=https://cnb.cool/nobu121/dsh-go/-/releases/download/runtime-latest" >> "$GITHUB_ENV"
       - name: Install wails3
         shell: bash
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.16
@@ -109,9 +84,6 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
         run: wails3 task package:dist APP_VERSION="$APP_VERSION" UPDATE_REPO="$UPDATE_REPO" RUNTIME_BASE_URL="$RUNTIME_BASE_URL"
-      - name: Package runtime
-        shell: bash
-        run: wails3 task package:runtime
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
@@ -131,7 +103,7 @@ jobs:
         run: |
           cd dist
           shopt -s nullglob
-          sha256sum dsh-go-*.dmg dsh-go-*.exe dsh-runtime-*.zip > SHA256SUMS
+          sha256sum dsh-go-*.dmg dsh-go-*.exe > SHA256SUMS
           cat SHA256SUMS
       - name: Publish GitHub release
         env:
@@ -143,12 +115,12 @@ jobs:
             ver="$(tr -d '[:space:]' < app.version)"
           fi
           tag="v${ver}"
-          notes="dsh-go ${ver}: macOS DMG, Windows exe, and the matching dsh runtime zips. The app installs both with one update."
+          notes="dsh-go client ${ver}: macOS DMG and Windows exe. The dsh runtime updates on its own from the runtime-latest channel."
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release edit "$tag" --prerelease=false --latest --notes "$notes"
-            gh release upload "$tag" dist/dsh-go-* dist/dsh-runtime-* dist/runtime.json dist/SHA256SUMS --clobber
+            gh release upload "$tag" dist/dsh-go-* dist/SHA256SUMS --clobber
           else
-            gh release create "$tag" dist/dsh-go-* dist/dsh-runtime-* dist/runtime.json dist/SHA256SUMS \
+            gh release create "$tag" dist/dsh-go-* dist/SHA256SUMS \
               --title "$tag" \
               --notes "$notes" \
               --latest
@@ -165,21 +137,17 @@ jobs:
           if [ -z "$ver" ]; then
             ver="$(tr -d '[:space:]' < app.version)"
           fi
-          export CNB_NOTES="dsh-go ${ver}"
+          export CNB_NOTES="dsh-go client ${ver}"
           bash scripts/sync-release-to-cnb.sh "v${ver}" dist
-      - name: Commit versions
-        if: inputs.version != '' || inputs.dsh_version != ''
+      - name: Commit app.version
+        if: inputs.version != ''
         run: |
-          if [ -n "${{ inputs.version }}" ]; then
-            printf '%s\n' "${{ inputs.version }}" > app.version
-            bash scripts/sync-app-version.sh "${{ inputs.version }}"
-          fi
-          if [ -n "${{ inputs.dsh_version }}" ]; then
-            printf '%s\n' "${{ inputs.dsh_version }}" > dsh.version
-          fi
-          git add app.version dsh.version build/config.yml build/windows/info.json build/darwin/Info.plist
+          ver="${{ inputs.version }}"
+          printf '%s\n' "$ver" > app.version
+          bash scripts/sync-app-version.sh "$ver"
+          git add app.version build/config.yml build/windows/info.json build/darwin/Info.plist
           git diff --cached --quiet && exit 0
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Release ${{ inputs.version || 'client' }}"
+          git commit -m "Release client ${ver}"
           git push

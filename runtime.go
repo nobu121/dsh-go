@@ -48,18 +48,6 @@ func runtimeBaseURL() string {
 }
 
 func runtimeBaseURLs() []string {
-	return runtimeBaseURLsFor(shellVersion())
-}
-
-func runtimeReleaseTag(version string) string {
-	v := strings.TrimSpace(version)
-	if v == "" {
-		v = shellVersion()
-	}
-	return "v" + strings.TrimPrefix(v, "v")
-}
-
-func runtimeBaseURLsFor(version string) []string {
 	if u := strings.TrimSpace(os.Getenv("DSH_RUNTIME_BASE_URL")); u != "" {
 		return []string{strings.TrimRight(u, "/")}
 	}
@@ -74,9 +62,8 @@ func runtimeBaseURLsFor(version string) []string {
 		out = append(out, u)
 	}
 	add(RuntimeBaseURL)
-	tag := runtimeReleaseTag(version)
-	add(cnbReleaseBase(tag))
-	add(githubReleaseBase(tag))
+	add(cnbReleaseBase(runtimeChannelTag))
+	add(githubReleaseBase(runtimeChannelTag))
 	return out
 }
 
@@ -162,11 +149,7 @@ func runtimeNodeCommand(root string) []string {
 }
 
 func fetchCachedRuntime(ctx context.Context, onPrep PrepReporter) error {
-	return fetchCachedRuntimeVersion(ctx, onPrep, shellVersion())
-}
-
-func fetchCachedRuntimeVersion(ctx context.Context, onPrep PrepReporter, version string) error {
-	bases := orderBySpeed(ctx, runtimeBaseURLsFor(version), runtimeChannelFile)
+	bases := orderBySpeed(ctx, runtimeBaseURLs(), runtimeChannelFile)
 	if len(bases) == 0 {
 		return errors.New("DSH_RUNTIME_BASE_URL is empty")
 	}

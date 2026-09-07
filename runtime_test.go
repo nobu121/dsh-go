@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -161,7 +160,7 @@ func TestRuntimeBaseURLsFallbackGitHub(t *testing.T) {
 		RuntimeBaseURL = oldBase
 		UpdateRepo = oldRepo
 	})
-	RuntimeBaseURL = "https://cnb.cool/nobu121/dsh-go/-/releases/download/v0.2.0"
+	RuntimeBaseURL = "https://cnb.cool/nobu121/dsh-go/-/releases/download/" + runtimeChannelTag
 	UpdateRepo = "nobu121/dsh-go"
 	got := runtimeBaseURLs()
 	if len(got) != 2 {
@@ -170,8 +169,9 @@ func TestRuntimeBaseURLsFallbackGitHub(t *testing.T) {
 	if got[0] != RuntimeBaseURL {
 		t.Fatalf("primary = %s", got[0])
 	}
-	if !strings.Contains(got[1], "github.com") || !strings.HasSuffix(got[1], "/"+runtimeReleaseTag(shellVersion())) {
-		t.Fatalf("fallback = %s", got[1])
+	wantGH := "https://github.com/nobu121/dsh-go/releases/download/" + runtimeChannelTag
+	if got[1] != wantGH {
+		t.Fatalf("fallback = %s, want %s", got[1], wantGH)
 	}
 }
 
@@ -188,12 +188,8 @@ func TestRuntimeBaseURLsAreVersionIndependent(t *testing.T) {
 	Version = "1.2.3"
 	before := runtimeBaseURLs()
 	Version = "4.5.6"
-	after := runtimeBaseURLs()
-	if len(before) != 2 || len(after) != 2 {
-		t.Fatalf("bases = %#v vs %#v", before, after)
-	}
-	if !strings.HasSuffix(before[0], "/v1.2.3") || !strings.HasSuffix(after[0], "/v4.5.6") {
-		t.Fatalf("runtime URLs should follow the client tag: %#v vs %#v", before, after)
+	if after := runtimeBaseURLs(); len(after) != 2 || len(before) != 2 || after[0] != before[0] || after[1] != before[1] {
+		t.Fatalf("channel moved with client version: %#v vs %#v", before, after)
 	}
 }
 

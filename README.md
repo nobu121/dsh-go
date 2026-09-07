@@ -30,9 +30,13 @@ uses, so the app and the terminal share one set of profiles and plugins.
 
 ## Updates
 
-On launch the prep page checks for a newer client release. One **立即更新**
-installs the client and the matching runtime from that same GitHub / CNB
-tag, after a speed test picks the faster host.
+The client and the dsh runtime version independently. On launch the prep
+page checks both, and one **立即更新** installs whichever is new (or both)
+after a speed test between CNB and GitHub.
+
+- **Client** (`app.version`) — manual full releases (`v0.2.0`, …).
+- **Runtime** — rolling `runtime-latest` channel. A new dsh does not need a
+  new client.
 
 `稍后` continues with the version already on disk. Startup never rejects a
 working runtime over its version, so an offline launch still works.

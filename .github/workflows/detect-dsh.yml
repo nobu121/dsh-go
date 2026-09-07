@@ -29,13 +29,13 @@ jobs:
             echo "npm latest matches dsh.version"
           fi
 
-  # Client and runtime ship on the same tag, so a new dsh rebuilds the release.
-  release:
+  # A new upstream dsh only moves the runtime channel; the client is untouched.
+  runtime:
     needs: detect
     if: needs.detect.outputs.version != ''
-    uses: ./.github/workflows/release.yml
+    uses: ./.github/workflows/release-runtime.yml
     with:
-      dsh_version: ${{ needs.detect.outputs.version }}
+      version: ${{ needs.detect.outputs.version }}
     secrets: inherit
     permissions:
       contents: write

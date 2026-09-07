@@ -224,11 +224,7 @@ func offerDSHUpdate(ctx context.Context, dsh *DSH, show func(string)) {
 
 func applyAllUpdates(ctx context.Context, app *application.App, emit func(PrepProgress), present func(), dsh *DSH, offer *updateCapsule) {
 	if offer.dshVersion() != "" {
-		rel := shellVersion()
-		if v := offer.appVersion(); v != "" {
-			rel = v
-		}
-		if err := applyDSHUpdateNow(ctx, emit, dsh, offer.dshVersion(), rel); err != nil {
+		if err := applyDSHUpdateNow(ctx, emit, dsh, offer.dshVersion()); err != nil {
 			log.Printf("dsh update: %v", err)
 			offer.showDSH(offer.dshVersion())
 			p := offer.progress()
@@ -270,7 +266,7 @@ func applyAllUpdates(ctx context.Context, app *application.App, emit func(PrepPr
 	offer.proceed()
 }
 
-func applyDSHUpdateNow(ctx context.Context, emit func(PrepProgress), dsh *DSH, target, release string) error {
+func applyDSHUpdateNow(ctx context.Context, emit func(PrepProgress), dsh *DSH, target string) error {
 	if target == "" {
 		target = targetDSHVersion(ctx)
 	}
@@ -282,7 +278,7 @@ func applyDSHUpdateNow(ctx context.Context, emit func(PrepProgress), dsh *DSH, t
 	case sourcePath:
 		return upgradeGlobalDSH(ctx, target)
 	case sourceCache, sourceBundled:
-		return fetchCachedRuntimeVersion(ctx, emit, release)
+		return fetchCachedRuntime(ctx, emit)
 	default:
 		return errNoDSH
 	}
