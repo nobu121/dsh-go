@@ -25,6 +25,26 @@ func TestOrderBySpeedPicksFasterMirror(t *testing.T) {
 	}
 }
 
+func TestOrderBySpeedDoesNotWaitForHungMirror(t *testing.T) {
+	hung := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		time.Sleep(10 * time.Second)
+	}))
+	defer hung.Close()
+	fast := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer fast.Close()
+
+	start := time.Now()
+	got := orderBySpeed(context.Background(), []string{hung.URL, fast.URL}, "SHA256SUMS")
+	if time.Since(start) > time.Second {
+		t.Fatalf("took %s waiting on hung mirror", time.Since(start))
+	}
+	if len(got) == 0 || got[0] != fast.URL {
+		t.Fatalf("got %#v, want %s first", got, fast.URL)
+	}
+}
+
 func TestOrderBySpeedKeepsLocalOrder(t *testing.T) {
 	bases := []string{"file:///tmp/a", "file:///tmp/b"}
 	got := orderBySpeed(context.Background(), bases, "SHA256SUMS")

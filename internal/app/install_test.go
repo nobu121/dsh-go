@@ -62,6 +62,43 @@ func TestPathUnderDir(t *testing.T) {
 	}
 }
 
+func TestUninstallDirsIncludeRuntime(t *testing.T) {
+	dirs := uninstallDirs()
+	if len(dirs) == 0 {
+		t.Fatal("empty")
+	}
+	foundRuntime, foundInstall := false, false
+	runtimeDir := filepath.Clean(runtimeCacheDir())
+	installDir := filepath.Clean(dshGoDir())
+	for _, dir := range dirs {
+		if strings.EqualFold(dir, runtimeDir) {
+			foundRuntime = true
+		}
+		if strings.EqualFold(dir, installDir) {
+			foundInstall = true
+		}
+	}
+	if !foundRuntime {
+		t.Fatalf("missing runtime %q in %v", runtimeDir, dirs)
+	}
+	if !foundInstall {
+		t.Fatalf("missing install %q in %v", installDir, dirs)
+	}
+}
+
+func TestDelayedRemoveScriptRetriesRuntime(t *testing.T) {
+	script := delayedRemoveScript([]string{`C:\AppData\dsh-go\dsh-runtime`, `C:\AppData\dsh-go`})
+	if !strings.Contains(script, `rd /s /q "C:\AppData\dsh-go\dsh-runtime"`) {
+		t.Fatalf("runtime: %s", script)
+	}
+	if !strings.Contains(script, `rd /s /q "C:\AppData\dsh-go"`) {
+		t.Fatalf("install: %s", script)
+	}
+	if !strings.Contains(script, "for /L %i") {
+		t.Fatalf("retry: %s", script)
+	}
+}
+
 func TestCopyFile(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "src.exe")

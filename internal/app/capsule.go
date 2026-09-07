@@ -126,24 +126,25 @@ func (c *updateCapsule) progress() PrepProgress {
 	appVer, dshVer := c.appVer, c.dshVer
 	c.mu.Unlock()
 
+	ui := currentUI()
 	var items []PrepOfferItem
 	if appVer != "" {
-		items = append(items, PrepOfferItem{Kind: capsuleKindApp, Name: "客户端", Version: appVer})
+		items = append(items, PrepOfferItem{Kind: capsuleKindApp, Name: ui.Client, Version: appVer})
 	}
 	if kind == capsuleKindDSH && dshVer != "" {
-		items = append(items, PrepOfferItem{Kind: capsuleKindDSH, Name: "运行时", Version: dshVer})
+		items = append(items, PrepOfferItem{Kind: capsuleKindDSH, Name: ui.Runtime, Version: dshVer})
 	}
 
-	msg := "客户端有新版本，更新后会重启。"
+	msg := ui.OfferApp
 	if kind == capsuleKindDSH && appVer != "" {
-		msg = "将一并更新客户端和运行时。"
+		msg = ui.OfferBoth
 	} else if kind == capsuleKindDSH {
-		msg = "运行时有新版本，更新后会重新启动 Harness。"
+		msg = ui.OfferDSH
 	}
 	return PrepProgress{
 		Stage:   prepOfferStage,
 		Message: msg,
-		Action:  "立即更新",
+		Action:  ui.UpdateNow,
 		Version: version,
 		Items:   items,
 	}

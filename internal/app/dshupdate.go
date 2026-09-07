@@ -119,7 +119,7 @@ func globalUpgradeArgs(ver string) []string {
 func upgradeGlobalDSH(ctx context.Context, ver string) error {
 	npm, err := lookNamed("npm")
 	if err != nil {
-		return fmt.Errorf("未找到 npm，无法更新全局 dsh")
+		return fmt.Errorf("%s", currentUI().NPMMissing)
 	}
 	cmd := exec.CommandContext(ctx, npm, globalUpgradeArgs(ver)...)
 	out, err := cmd.CombinedOutput()
@@ -128,7 +128,7 @@ func upgradeGlobalDSH(ctx context.Context, ver string) error {
 		if msg == "" {
 			msg = err.Error()
 		}
-		return fmt.Errorf("npm i -g 失败: %s", msg)
+		return fmt.Errorf("%s", fmt.Sprintf(currentUI().NPMFailed, msg))
 	}
 	return nil
 }

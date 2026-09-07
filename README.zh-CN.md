@@ -1,78 +1,22 @@
-# dsh-go
+# Deepseek Harness GO
 
 [English](README.md) | **中文**
 
-面向 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的薄
-[Wails v3](https://v3.wails.io/) 桌面壳。
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的桌面客户端。
+支持 **macOS** 和 **Windows**。本程序是非官方应用，与 DeepSeek 无关；应用图标及
+DeepSeek 相关商标均归杭州深度求索人工智能基础技术研究有限公司所有。
 
-壳只做三件事：
+## 功能
 
-1. 查找或拉取 `dsh` 运行时，并监督该进程。
-2. 用带鉴权的启动 URL 打开 dsh 自己的 Web UI。
-3. 退出时干净地带走整棵进程树。
+- 用原生窗口打开 Harness。
+- 若本机已全局安装 `dsh`，会直接复用；否则首次启动时自动下载运行时。
+- 与 `dsh` 命令行共用配置、profile 和插件（`~/.dsh`）。
+- 跟随 Harness 的主题，以及在 Harness 里设置的语言。
+- 客户端和运行时可分别检查更新。可以立即更新，也可以稍后，继续用当前版本。
+- 单实例运行。再次打开会回到已有窗口。
+- Windows 下会创建桌面快捷方式，并出现在「已安装的应用」中。卸载会去掉应用、快捷方式和运行时。
 
-发版目标：**macOS** 和 **Windows**。
-
-## 目录
-
-```
-main.go            # Wails 入口（嵌入 frontend 与图标）
-frontend/          # 准备页
-internal/app/      # 壳、运行时、更新、Windows 自安装
-build/             # Wails 打包资源
-scripts/
-```
-
-## 运行时
-
-可安装包是 **纯壳**——包里没有 Node 和 `@deepseek-ai/dsh`。启动时壳会用它能找到的
-dsh（已有的全局安装，或此前下载过的运行时），都没有就一边显示准备页一边拉取。
-已经装过 dsh 的开发者直接得到盖在自己 CLI 上的原生窗口。
-
-下载来的运行时本身没有 `dsh` 可执行文件，壳会装一个 `dsh` shim 并登记到新开的
-终端里。两种情况下需要调用 `dsh` 的插件都能正常工作。
-
-`DSH_HOME` 默认为 `~/.dsh`，与 `npm i -g @deepseek-ai/dsh` 相同，所以应用和终端
-共用同一份 profile 和插件。
-
-## 更新
-
-客户端和运行时各自独立版本。启动时准备页会检查二者，「立即更新」装上有更新
-的那部分（或两个都装），并先对 CNB / GitHub 测速。
-
-- **客户端**（`app.version`）——手动发正式版（`v0.2.0` …）。
-- **运行时**——滚动频道 `runtime-latest`。上游 dsh 新版本不需要发新客户端。
-
-「稍后」继续用磁盘上已有的版本。启动阶段不会因为版本不一致而拒绝一个能跑的
-运行时，断网也照样能起。
-
-## 开发
-
-```sh
-bash scripts/sync-dsh.sh   # vendor/dsh: Node + @deepseek-ai/dsh@$(cat dsh.version)
-go test -mod=mod ./...
-go build -mod=mod -o dsh-go .
-./dsh-go
-```
-
-`DSH_EXE` 可以把壳指向某个具体的 `dsh`，`DSH_REPO` 指向 dsh 源码目录，
-`DSH_RUNTIME_BASE_URL` 指向一个放运行时资产的目录（`file:///…` 可用）以测下载路径。
-
-## 打包
-
-```sh
-wails3 task package:dist      # macOS DMG 或 Windows zip
-bash scripts/sync-dsh.sh
-wails3 task package:runtime   # 频道用的运行时资产
-```
-
-两种应用制品都不含运行时。Windows 下双击正式版 exe 会自安装到 `%APPDATA%\dsh-go`，
-在桌面建快捷方式，并写入「安装的应用」卸载项；卸载会去掉快捷方式、我们注册的
-`dsh` shim（若有）、runtime 和 exe。配上 Apple Developer ID 与公证密钥后，CI 会签
-名并公证 DMG，从而去掉 macOS「仍要打开」提示。
-
-安装包与运行时资产发在 **GitHub Releases**，并同步到 **CNB Releases**
-（`https://cnb.cool/nobu121/dsh-go/-/releases`）。日常开发远程仍是 CNB（`origin`）。
+安装包在 [GitHub Releases](https://github.com/nobu121/dsh-go/releases)。
 
 ## 许可
 

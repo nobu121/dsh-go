@@ -12,7 +12,8 @@ import (
 
 const (
 	updateInterval  = 6 * time.Hour
-	dshCheckTimeout = 20 * time.Second
+	dshCheckTimeout     = 20 * time.Second
+	startupOfferTimeout = 2 * time.Second
 	manualUpdateEvt = "dsh-go:manual-update"
 )
 
@@ -53,6 +54,8 @@ func checkShellUpdate(ctx context.Context, app *application.App) string {
 		} else if rel != nil {
 			log.Printf("update available: %s", rel.Version)
 			return rel.Version
+		} else {
+			return ""
 		}
 	}
 	latest := latestReleaseVersion(ctx)

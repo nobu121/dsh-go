@@ -91,6 +91,34 @@ func isInstalledExe(exe string) bool {
 		strings.EqualFold(filepath.Base(exe), installExeName)
 }
 
+func uninstallDirs() []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, dir := range []string{runtimeCacheDir(), dshGoDir()} {
+		dir = filepath.Clean(dir)
+		if dir == "" || dir == "." || seen[strings.ToLower(dir)] {
+			continue
+		}
+		seen[strings.ToLower(dir)] = true
+		out = append(out, dir)
+	}
+	return out
+}
+
+func delayedRemoveScript(dirs []string) string {
+	var b strings.Builder
+	b.WriteString("ping -n 4 127.0.0.1 >nul")
+	for _, dir := range dirs {
+		q := `"` + dir + `"`
+		b.WriteString(" & for /L %i in (1,1,10) do @if exist ")
+		b.WriteString(q)
+		b.WriteString(" (rd /s /q ")
+		b.WriteString(q)
+		b.WriteString(" & ping -n 2 127.0.0.1 >nul)")
+	}
+	return b.String()
+}
+
 func pathUnderDir(path, dir string) bool {
 	path = filepath.Clean(path)
 	root := filepath.Clean(dir)

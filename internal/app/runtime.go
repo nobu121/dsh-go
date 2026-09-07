@@ -196,7 +196,7 @@ func fetchCachedRuntimeFrom(ctx context.Context, onPrep PrepReporter, base strin
 	dest := runtimeCacheDir()
 	onPrep = throttlePrep(onPrep, 150*time.Millisecond)
 
-	reportPrep(onPrep, PrepProgress{Stage: "download", Message: "正在下载…"})
+	reportPrep(onPrep, PrepProgress{Stage: "download", Message: currentUI().Downloading})
 
 	body, total, err := openRemote(ctx, zipURL)
 	if err != nil {
@@ -208,7 +208,7 @@ func fetchCachedRuntimeFrom(ctx context.Context, onPrep PrepReporter, base strin
 	}
 	reportPrep(onPrep, PrepProgress{
 		Stage:   "download",
-		Message: "正在下载…",
+		Message: currentUI().Downloading,
 		Total:   total,
 	})
 
@@ -223,7 +223,7 @@ func fetchCachedRuntimeFrom(ctx context.Context, onPrep PrepReporter, base strin
 	pr := &progressReader{r: io.TeeReader(body, hash), total: total, fn: func(n, tot int64) {
 		reportPrep(onPrep, PrepProgress{
 			Stage:   "download",
-			Message: "正在下载…",
+			Message: currentUI().Downloading,
 			Bytes:   n,
 			Total:   tot,
 		})
@@ -243,7 +243,7 @@ func fetchCachedRuntimeFrom(ctx context.Context, onPrep PrepReporter, base strin
 		return fmt.Errorf("checksum mismatch for %s", asset)
 	}
 
-	reportPrep(onPrep, PrepProgress{Stage: "unpack", Message: "正在安装…"})
+	reportPrep(onPrep, PrepProgress{Stage: "unpack", Message: currentUI().Installing})
 	tmpDir := dest + ".tmp"
 	_ = os.RemoveAll(tmpDir)
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
@@ -252,7 +252,7 @@ func fetchCachedRuntimeFrom(ctx context.Context, onPrep PrepReporter, base strin
 	if err := unzipRuntime(tmpName, tmpDir, func(n, tot int64) {
 		reportPrep(onPrep, PrepProgress{
 			Stage:   "unpack",
-			Message: "正在安装…",
+			Message: currentUI().Installing,
 			Bytes:   n,
 			Total:   tot,
 		})

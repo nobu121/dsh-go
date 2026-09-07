@@ -2,7 +2,7 @@
 <html lang="zh-CN" data-theme="system">
 <head>
   <meta charset="utf-8" />
-  <title>dsh-go</title>
+  <title>Deepseek Harness GO</title>
   <style>
     :root {
       --bg: #fff;
@@ -108,11 +108,11 @@
       <img class="logo" src="/build/appicon.png" alt="" />
       <div id="status">
         <div class="bar indeterminate" id="bar"><i id="fill"></i></div>
-        <p id="msg">正在启动…</p>
+        <p id="msg">Deepseek Harness GO</p>
         <button id="retry" type="button" hidden>↻</button>
       </div>
       <div id="offer" hidden>
-        <h1>发现新版本</h1>
+        <h1 id="offer-title">发现新版本</h1>
         <p id="offer-msg"></p>
         <ul id="items" hidden></ul>
         <div class="actions">
@@ -126,18 +126,50 @@
   <script type="module">
     import { Events } from "/wails/runtime.js";
 
-    const INIT = "正在初始化";
+    const COPY = {
+      zh: {
+        init: "正在初始化",
+        offerTitle: "发现新版本",
+        apply: "立即更新",
+        later: "稍后",
+        download: "正在下载",
+        unpack: "正在安装",
+      },
+      en: {
+        init: "Starting",
+        offerTitle: "Update available",
+        apply: "Update now",
+        later: "Later",
+        download: "Downloading",
+        unpack: "Installing",
+      },
+    };
+
     const status = document.getElementById("status");
     const offer = document.getElementById("offer");
     const bar = document.getElementById("bar");
     const fill = document.getElementById("fill");
     const msg = document.getElementById("msg");
     const retry = document.getElementById("retry");
+    const offerTitle = document.getElementById("offer-title");
     const offerMsg = document.getElementById("offer-msg");
     const itemsEl = document.getElementById("items");
     const applyBtn = document.getElementById("apply");
     const later = document.getElementById("later");
     const ver = document.getElementById("ver");
+
+    function copy() {
+      return COPY[document.documentElement.lang === "en" ? "en" : "zh"];
+    }
+
+    function setLocale(pref) {
+      const en = pref === "en";
+      document.documentElement.lang = en ? "en" : "zh-CN";
+      const c = copy();
+      offerTitle.textContent = c.offerTitle;
+      later.textContent = c.later;
+      if (!applyBtn.dataset.locked) applyBtn.textContent = c.apply;
+    }
 
     function renderItems(items) {
       itemsEl.replaceChildren();
@@ -165,11 +197,12 @@
       const bytes = Number(p.Bytes ?? p.bytes ?? 0);
       const total = Number(p.Total ?? p.total ?? 0);
       const text = p.Message ?? p.message ?? "";
-      const action = p.Action ?? p.action ?? "立即更新";
+      const c = copy();
+      const action = p.Action ?? p.action ?? c.apply;
       const version = p.Version ?? p.version ?? "";
       const err = stage === "error";
       const isOffer = stage === "offer";
-      const labels = { download: "正在下载", unpack: "正在安装" };
+      const labels = { download: c.download, unpack: c.unpack };
       const hasProgress = Boolean(labels[stage]) && total > 0;
 
       offer.hidden = !isOffer;
@@ -180,6 +213,7 @@
         const many = items.length > 1;
         offerMsg.textContent = text;
         applyBtn.textContent = action;
+        applyBtn.dataset.locked = "1";
         applyBtn.hidden = false;
         itemsEl.hidden = !many;
         if (many) renderItems(items);
@@ -206,10 +240,14 @@
       bar.classList.add("indeterminate");
       fill.style.width = "";
       msg.hidden = false;
-      msg.textContent = text || INIT;
+      msg.textContent = text || c.init;
     }
 
+    const urlLang = new URLSearchParams(location.search).get("lang");
+    if (urlLang === "en" || urlLang === "zh") setLocale(urlLang);
+
     Events.On("dsh-go:theme-pref", (e) => setTheme(e?.data ?? e ?? "system"));
+    Events.On("dsh-go:locale", (e) => setLocale(e?.data ?? e ?? "zh"));
     Events.On("dsh-go:prep", (e) => apply(e?.data ?? e ?? {}));
     retry.addEventListener("click", () => {
       retry.hidden = true;

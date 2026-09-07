@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -90,10 +91,14 @@ func orderBySpeed(ctx context.Context, bases []string, probe string) []string {
 	ctx, cancel := context.WithTimeout(ctx, mirrorProbeTimeout)
 	defer cancel()
 	ch := make(chan scored, len(bases))
+	var gotOK atomic.Bool
 	for _, base := range bases {
 		go func(base string) {
 			start := time.Now()
 			err := probeMirror(ctx, base, probe)
+			if err == nil && gotOK.CompareAndSwap(false, true) {
+				cancel()
+			}
 			ch <- scored{base, time.Since(start), err}
 		}(base)
 	}

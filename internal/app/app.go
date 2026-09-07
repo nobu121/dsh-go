@@ -3,10 +3,12 @@ package app
 import (
 	"context"
 	"embed"
+	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -38,7 +40,9 @@ func Run(assets embed.FS) {
 		return
 	}
 	initUserPATH()
+	loadStartupLocale()
 
+	ui := &shellWindows{}
 	app := application.New(application.Options{
 		Name:        "dsh-go",
 		Description: "A Wails v3 desktop shell for DeepSeek Harness",
@@ -48,12 +52,22 @@ func Run(assets embed.FS) {
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID: "com.dshgo.app",
+			OnSecondInstanceLaunch: func(application.SecondInstanceData) {
+				if win := ui.current(); win != nil {
+					win.Show()
+					win.Restore()
+					win.Focus()
+				}
+			},
+		},
 	})
+	ui.app = app
 	registerThemeEvents(app)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	offer := newUpdateCapsule()
-	ui := &shellWindows{app: app}
 
 	var (
 		dsh          *DSH
@@ -113,6 +127,7 @@ func Run(assets embed.FS) {
 
 	app.Event.On(prepReadyEvent, func(*application.CustomEvent) {
 		app.Event.Emit(themePrefEvent, lockedThemePreference())
+		app.Event.Emit(localePrefEvent, loadStartupLocale())
 		if _, _, ok := offer.pending(); ok {
 			app.Event.Emit(prepEvent, offer.progress())
 			return
@@ -206,14 +221,34 @@ func waitStartupOffer(
 	emit(prepStartProgress())
 	simulateUpdates(offer)
 	if !updateSimulationActive() {
-		if _, _, ok := offer.pending(); !ok {
-			offerDSHUpdate(ctx, dsh, offer.showDSH)
-		}
-		if updaterReady {
-			if ver := checkShellUpdate(ctx, app); ver != "" {
+		checkCtx, cancel := context.WithTimeout(ctx, startupOfferTimeout)
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			if _, _, ok := offer.pending(); !ok {
+				offerDSHUpdate(checkCtx, dsh, offer.showDSH)
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			if !updaterReady {
+				return
+			}
+			if ver := checkShellUpdate(checkCtx, app); ver != "" {
 				offer.stashApp(ver)
 			}
+		}()
+		done := make(chan struct{})
+		go func() {
+			wg.Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-checkCtx.Done():
 		}
+		cancel()
 	}
 	if _, _, ok := offer.pending(); !ok {
 		return
@@ -256,7 +291,7 @@ func applyAllUpdates(ctx context.Context, app *application.App, emit func(PrepPr
 		offer.clearDSH()
 	}
 	if offer.appVersion() != "" {
-		emit(PrepProgress{Stage: "update", Message: "正在选择下载源…"})
+		emit(PrepProgress{Stage: "update", Message: currentUI().SelectingSource})
 		path, err := downloadDesktopUpdate(ctx, offer.appVersion(), emit)
 		if err != nil {
 			log.Printf("client update: %v", err)
@@ -265,7 +300,7 @@ func applyAllUpdates(ctx context.Context, app *application.App, emit func(PrepPr
 			present()
 			return
 		}
-		emit(PrepProgress{Stage: "update", Message: "正在安装客户端…"})
+		emit(PrepProgress{Stage: "update", Message: currentUI().InstallingClient})
 		if err := installDesktopPackage(path); err != nil {
 			log.Printf("client install: %v", err)
 			offer.restoreAppIfPending()
@@ -290,7 +325,7 @@ func applyDSHUpdateNow(ctx context.Context, emit func(PrepProgress), dsh *DSH, t
 	}
 	emit(PrepProgress{
 		Stage:   "update",
-		Message: "正在更新运行时到 " + target + "…",
+		Message: fmt.Sprintf(currentUI().UpdatingRuntime, target),
 	})
 	switch dsh.Source().Kind {
 	case sourcePath:

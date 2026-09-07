@@ -117,10 +117,10 @@ func (s *shellWindows) showHarness(dshURL string) *application.WebviewWindow {
 func newPrepWindow(app *application.App) *application.WebviewWindow {
 	dark := knownThemeDark()
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:                "DeepSeek Harness",
+		Title:                productDisplayName,
 		Width:                1280,
 		Height:               800,
-		URL:                  "/",
+		URL:                  prepPageURL(),
 		AllowSimpleEventEmit: true,
 		Mac:                  macChrome(dark),
 		Windows: application.WindowsWindow{
@@ -136,7 +136,7 @@ func newPrepWindow(app *application.App) *application.WebviewWindow {
 func newHarnessWindow(app *application.App, dshURL string, from *application.WebviewWindow) *application.WebviewWindow {
 	dark := knownThemeDark()
 	opts := application.WebviewWindowOptions{
-		Title:                "DeepSeek Harness",
+		Title:                productDisplayName,
 		Width:                1280,
 		Height:               800,
 		HTML:                 harnessInitHTML,

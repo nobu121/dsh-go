@@ -3,7 +3,7 @@ package app
 import "sync"
 
 const (
-	prepStartMsg = "正在启动…"
+	prepStartMsg = productDisplayName
 )
 
 // PrepOfferItem is one pending update on the shell prep page.

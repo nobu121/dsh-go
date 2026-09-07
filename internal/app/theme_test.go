@@ -116,7 +116,7 @@ func TestPrepPageShowsInitAndFollowsSystem(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := string(b)
-	if !strings.Contains(page, "\u6b63\u5728\u542f\u52a8\u2026") {
+	if !strings.Contains(page, "Deepseek Harness GO") {
 		t.Fatal("prep page must show start copy when a runtime is already available")
 	}
 	if !strings.Contains(page, "\u6b63\u5728\u4e0b\u8f7d") || !strings.Contains(page, "\u6b63\u5728\u5b89\u88c5") {

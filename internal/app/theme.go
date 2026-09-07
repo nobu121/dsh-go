@@ -142,11 +142,12 @@ func settingsYAMLPath() string {
 	return filepath.Join(defaultHomeDir(), "settings.yaml")
 }
 
-func parseUIThemePreference(raw string) string {
+func parseYAMLPreference(raw, section string) string {
 	in := false
+	header := section + ":"
 	for _, line := range strings.Split(raw, "\n") {
 		trimmed := strings.TrimSpace(line)
-		if trimmed == "ui-theme:" {
+		if trimmed == header {
 			in = true
 			continue
 		}
@@ -162,13 +163,18 @@ func parseUIThemePreference(raw string) string {
 		if !ok || strings.TrimSpace(key) != "preference" {
 			continue
 		}
-		pref := strings.Trim(strings.TrimSpace(val), `"'`)
-		switch pref {
-		case "light", "dark", "system":
-			return pref
-		}
+		return strings.Trim(strings.TrimSpace(val), `"'`)
 	}
 	return ""
+}
+
+func parseUIThemePreference(raw string) string {
+	switch pref := parseYAMLPreference(raw, "ui-theme"); pref {
+	case "light", "dark", "system":
+		return pref
+	default:
+		return ""
+	}
 }
 
 // lockedThemePreference is the user's explicit ui-theme lock.

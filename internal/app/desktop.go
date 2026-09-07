@@ -100,7 +100,7 @@ func downloadDesktopVersion(ctx context.Context, version string, onPrep PrepRepo
 	for i, base := range bases {
 		reportPrep(onPrep, PrepProgress{
 			Stage:   "update",
-			Message: "正在从 " + mirrorName(base) + " 下载客户端…",
+			Message: currentUI().Downloading,
 		})
 		if err := downloadReleaseAsset(ctx, base, asset, dest, onPrep); err != nil {
 			last = err
@@ -136,7 +136,7 @@ func downloadReleaseAsset(ctx context.Context, base, asset, dest string, onPrep 
 	pr := &progressReader{r: io.TeeReader(body, hash), total: total, fn: func(n, tot int64) {
 		reportPrep(onPrep, PrepProgress{
 			Stage:   "download",
-			Message: "正在下载…",
+			Message: currentUI().Downloading,
 			Bytes:   n,
 			Total:   tot,
 		})

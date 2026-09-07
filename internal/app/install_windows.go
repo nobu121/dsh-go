@@ -85,7 +85,7 @@ func writeUninstallRegistry(exe, dir string) error {
 	vals := map[string]string{
 		"DisplayName":          productDisplayName,
 		"DisplayVersion":       shellVersion(),
-		"Publisher":            "dsh-go",
+		"Publisher":            "nobu121",
 		"InstallLocation":      dir,
 		"DisplayIcon":          exe,
 		"UninstallString":      uninstall,
@@ -161,25 +161,55 @@ func uninstallWindows() {
 		_ = os.Remove(filepath.Join(desktop, desktopShortcutOld))
 	}
 	unregisterDSHIfOurs()
+	removeInstallFiles()
+}
 
-	dir := dshGoDir()
+func removeInstallFiles() {
+	killProcessesUnder(dshGoDir())
+	time.Sleep(300 * time.Millisecond)
+
+	dirs := uninstallDirs()
+	for _, dir := range dirs {
+		if err := os.RemoveAll(dir); err != nil {
+			log.Printf("uninstall %s: %v", dir, err)
+		}
+	}
+
 	exe, err := currentExe()
-	if err == nil && pathUnderDir(exe, dir) {
-		script := fmt.Sprintf("ping -n 3 127.0.0.1 >nul & rd /s /q \"%s\"", dir)
-		cmd := exec.Command("cmd", "/C", script)
+	if err == nil && pathUnderDir(exe, dshGoDir()) {
+		cmd := exec.Command("cmd", "/C", delayedRemoveScript(dirs))
 		cmd.SysProcAttr = hiddenProcAttr(0)
 		if err := cmd.Start(); err != nil {
 			log.Printf("uninstall files: %v", err)
 		}
 		return
 	}
-	if err := os.RemoveAll(dir); err != nil {
-		log.Printf("uninstall files: %v", err)
+	for _, dir := range dirs {
+		if err := os.RemoveAll(dir); err != nil {
+			log.Printf("uninstall %s: %v", dir, err)
+		}
 	}
 }
 
 func killOtherDSHGo() {
 	runHidden("taskkill", "/F", "/IM", installExeName, "/FI", "PID ne "+strconv.Itoa(os.Getpid()))
+}
+
+func killProcessesUnder(dir string) {
+	dir = filepath.Clean(dir)
+	if dir == "" {
+		return
+	}
+	ps := fmt.Sprintf(
+		`$root = %s; $me = %d; Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $me -and $_.ExecutablePath -and $_.ExecutablePath.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`,
+		psSingle(dir),
+		os.Getpid(),
+	)
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps)
+	cmd.SysProcAttr = hiddenProcAttr(0)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		log.Printf("uninstall processes: %v: %s", err, strings.TrimSpace(string(out)))
+	}
 }
 
 func unregisterDSHIfOurs() {
