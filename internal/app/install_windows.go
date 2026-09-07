@@ -83,7 +83,7 @@ func writeUninstallRegistry(exe, dir string) error {
 	defer k.Close()
 	uninstall := quotedUninstallCmd(exe)
 	vals := map[string]string{
-		"DisplayName":          "dsh-go",
+		"DisplayName":          productDisplayName,
 		"DisplayVersion":       shellVersion(),
 		"Publisher":            "dsh-go",
 		"InstallLocation":      dir,

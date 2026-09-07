@@ -11,7 +11,8 @@ const (
 	uninstallArg       = "--uninstall"
 	skipSelfInstallEnv = "DSH_SKIP_SELF_INSTALL"
 	installExeName     = "dsh-go.exe"
-	desktopShortcut    = "Deepseek Harness GO.lnk"
+	productDisplayName = "Deepseek Harness GO"
+	desktopShortcut    = productDisplayName + ".lnk"
 	desktopShortcutOld = "dsh-go.lnk"
 )
 
