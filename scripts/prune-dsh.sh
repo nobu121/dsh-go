@@ -28,10 +28,12 @@ keep="${keep_os}-${keep_arch}"
 before="$(du -sk "$DEST" | awk '{print $1}')"
 
 node_bin=""
-if [[ -x "$DEST/node" ]]; then
-  node_bin="$DEST/node"
-elif [[ -f "$DEST/node.exe" ]]; then
+# Git Bash treats "node" as executable when node.exe is beside it, so check
+# the real Windows file first.
+if [[ -f "$DEST/node.exe" ]]; then
   node_bin="$DEST/node.exe"
+elif [[ -f "$DEST/node" || -x "$DEST/node" ]]; then
+  node_bin="$DEST/node"
 fi
 # Keep the official Node signature on macOS. strip/UPX would break it and
 # force an ad-hoc re-sign; Windows has no equivalent gate.
