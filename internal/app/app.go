@@ -3,12 +3,34 @@ package app
 import (
 	"context"
 	"embed"
+	"io/fs"
 	"log"
+	"net/http"
+	"strings"
 	"sync/atomic"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/updater"
 )
+
+// assetHandler serves the prep page at / and other embedded files (icon, versions)
+// at their repo paths. Wails looks for index.html at the FS root, so frontend/
+// is mounted there instead of exposing /frontend/index.html.
+func assetHandler(assets embed.FS) http.Handler {
+	frontend, err := fs.Sub(assets, "frontend")
+	if err != nil {
+		return application.AssetFileServerFS(assets)
+	}
+	page := application.AssetFileServerFS(frontend)
+	files := http.FileServer(http.FS(assets))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/build/") {
+			files.ServeHTTP(w, r)
+			return
+		}
+		page.ServeHTTP(w, r)
+	})
+}
 
 // Run starts the desktop shell.
 func Run(assets embed.FS) {
@@ -21,7 +43,7 @@ func Run(assets embed.FS) {
 		Name:        "dsh-go",
 		Description: "A Wails v3 desktop shell for DeepSeek Harness",
 		Assets: application.AssetOptions{
-			Handler: application.AssetFileServerFS(assets),
+			Handler: assetHandler(assets),
 		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: false,

@@ -120,7 +120,7 @@ func newPrepWindow(app *application.App) *application.WebviewWindow {
 		Title:                "DeepSeek Harness",
 		Width:                1280,
 		Height:               800,
-		URL:                  "/frontend/index.html",
+		URL:                  "/",
 		AllowSimpleEventEmit: true,
 		Mac:                  macChrome(dark),
 		Windows: application.WindowsWindow{

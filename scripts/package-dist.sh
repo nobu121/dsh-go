@@ -71,7 +71,7 @@ elif [[ "$os" == MINGW* || "$os" == MSYS* || "$os" == CYGWIN* || "$os" == Window
     command -v python3 >/dev/null || py=python
     "$py" -c "
 import zipfile, sys
-with zipfile.ZipFile(sys.argv[1], 'w', zipfile.ZIP_DEFLATED) as z:
+with zipfile.ZipFile(sys.argv[1], 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as z:
     z.write(sys.argv[2], sys.argv[3])
 " "$out" "$stage/$inner" "$inner"
   fi
