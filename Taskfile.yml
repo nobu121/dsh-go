@@ -24,13 +24,8 @@ tasks:
     cmds:
       - task: "{{.GOOS}}:package"
 
-  package:update-zip:
-    summary: Packages people-facing dist (macOS DMG / Windows exe)
-    cmds:
-      - task: package:dist
-
   package:dist:
-    summary: Packages macOS DMG or Windows exe
+    summary: Packages macOS DMG or Windows zip
     cmds:
       - task: '{{if eq OS "darwin"}}package{{else}}build{{end}}'
         vars:

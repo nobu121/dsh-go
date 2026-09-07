@@ -19,7 +19,7 @@ tasks:
       - cmd: rm -f *.syso
         platforms: [linux, darwin]
     vars:
-      BUILD_FLAGS: '{{if eq .DEV "true"}}-mod=mod -buildvcs=false -gcflags=all="-l"{{else}}-mod=mod -tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui -X main.Version={{.APP_VERSION}} -X main.UpdateRepo={{.UPDATE_REPO}} -X main.RuntimeBaseURL={{.RUNTIME_BASE_URL}}"{{end}}'
+      BUILD_FLAGS: '{{if eq .DEV "true"}}-mod=mod -buildvcs=false -gcflags=all="-l"{{else}}-mod=mod -tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui -X dsh-go/internal/app.Version={{.APP_VERSION}} -X dsh-go/internal/app.UpdateRepo={{.UPDATE_REPO}} -X dsh-go/internal/app.RuntimeBaseURL={{.RUNTIME_BASE_URL}}"{{end}}'
       APP_VERSION:
         sh: 'tr -d "[:space:]" < app.version 2>/dev/null || echo 0.0.0'
       UPDATE_REPO: '{{.UPDATE_REPO | default ""}}'
@@ -43,6 +43,8 @@ tasks:
       ARCH: '{{.ARCH | default ARCH}}'
 
   run:
+    env:
+      DSH_SKIP_SELF_INSTALL: "1"
     cmds:
       - '{{.BIN_DIR}}/{{.APP_NAME}}.exe'
 

@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="system">
+<head>
+  <meta charset="utf-8" />
+  <title>dsh-go</title>
+  <style>
+    :root {
+      --bg: #fff;
+      --bar: #eee;
+      --fill: #111;
+      --muted: #888;
+      --btn-bg: #111;
+      --btn-fg: #fff;
+      --logo-filter: invert(1);
+    }
+    html[data-theme="dark"] {
+      --bg: #06070f;
+      --bar: #2a2b33;
+      --fill: #eee;
+      --muted: #9aa0a6;
+      --btn-bg: #eee;
+      --btn-fg: #111;
+      --logo-filter: none;
+    }
+    @media (prefers-color-scheme: dark) {
+      html[data-theme="system"] {
+        --bg: #06070f;
+        --bar: #2a2b33;
+        --fill: #eee;
+        --muted: #9aa0a6;
+        --btn-bg: #eee;
+        --btn-fg: #111;
+        --logo-filter: none;
+      }
+    }
+    html[data-theme="light"] { color-scheme: light; }
+    html[data-theme="dark"] { color-scheme: dark; }
+    html[data-theme="system"] { color-scheme: light dark; }
+    html, body { height: 100%; margin: 0; background: var(--bg); }
+    main { height: 100%; display: grid; place-items: center; }
+    .card { width: min(360px, calc(100vw - 48px)); text-align: center; }
+    .logo {
+      width: 72px;
+      height: 72px;
+      display: block;
+      margin: 0 auto;
+      filter: var(--logo-filter);
+    }
+    .bar {
+      width: 160px; height: 3px; border-radius: 999px; background: var(--bar);
+      overflow: hidden; margin: 22px auto 0;
+    }
+    .bar > i { display: block; height: 100%; width: 0; background: var(--fill); border-radius: inherit; }
+    .bar.indeterminate > i {
+      width: 36%;
+      animation: bar-slide 1.1s ease-in-out infinite;
+    }
+    @keyframes bar-slide {
+      0% { transform: translateX(-120%); }
+      100% { transform: translateX(400%); }
+    }
+    #msg, #offer-msg {
+      margin: 14px auto 0; max-width: 320px; text-align: center;
+      color: var(--muted); font: 13px/1.5 system-ui, sans-serif;
+    }
+    h1 {
+      margin: 22px 0 0;
+      color: var(--fill);
+      font: 600 20px/1.3 system-ui, sans-serif;
+    }
+    .actions {
+      display: flex; justify-content: center; gap: 10px; margin-top: 22px;
+    }
+    button {
+      margin-top: 22px; border: 0; border-radius: 8px; padding: 8px 16px;
+      background: var(--btn-bg); color: var(--btn-fg); font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .actions button { margin-top: 0; min-width: 108px; }
+    button.secondary {
+      background: transparent;
+      color: var(--fill);
+      box-shadow: inset 0 0 0 1px var(--bar);
+    }
+    #ver {
+      margin: 18px 0 0;
+      color: var(--muted);
+      font: 12px/1.4 system-ui, sans-serif;
+      opacity: 0.75;
+    }
+    #items {
+      list-style: none; margin: 18px 0 0; padding: 0;
+      border: 1px solid var(--bar); border-radius: 10px; overflow: hidden;
+      text-align: left;
+    }
+    #items li {
+      display: grid; grid-template-columns: 1fr auto; gap: 12px;
+      align-items: center; padding: 10px 12px;
+    }
+    #items li + li { border-top: 1px solid var(--bar); }
+    #items .item-name { color: var(--fill); font: 600 13px/1.3 system-ui, sans-serif; }
+    #items .item-ver { color: var(--muted); font: 12px/1.3 system-ui, sans-serif; }
+    button[hidden], .bar[hidden], #msg[hidden], #status[hidden], #offer[hidden], #items[hidden], #ver[hidden] { display: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="card">
+      <img class="logo" src="/build/appicon.png" alt="" />
+      <div id="status">
+        <div class="bar indeterminate" id="bar"><i id="fill"></i></div>
+        <p id="msg">正在启动…</p>
+        <button id="retry" type="button" hidden>↻</button>
+      </div>
+      <div id="offer" hidden>
+        <h1>发现新版本</h1>
+        <p id="offer-msg"></p>
+        <ul id="items" hidden></ul>
+        <div class="actions">
+          <button id="apply" type="button">立即更新</button>
+          <button id="later" type="button" class="secondary">稍后</button>
+        </div>
+        <p id="ver"></p>
+      </div>
+    </div>
+  </main>
+  <script type="module">
+    import { Events } from "/wails/runtime.js";
+
+    const INIT = "正在初始化";
+    const status = document.getElementById("status");
+    const offer = document.getElementById("offer");
+    const bar = document.getElementById("bar");
+    const fill = document.getElementById("fill");
+    const msg = document.getElementById("msg");
+    const retry = document.getElementById("retry");
+    const offerMsg = document.getElementById("offer-msg");
+    const itemsEl = document.getElementById("items");
+    const applyBtn = document.getElementById("apply");
+    const later = document.getElementById("later");
+    const ver = document.getElementById("ver");
+
+    function renderItems(items) {
+      itemsEl.replaceChildren();
+      for (const it of items) {
+        const li = document.createElement("li");
+        const name = document.createElement("span");
+        name.className = "item-name";
+        name.textContent = it.Name ?? it.name ?? "";
+        const itemVer = document.createElement("span");
+        itemVer.className = "item-ver";
+        const version = it.Version ?? it.version ?? "";
+        itemVer.textContent = version ? "Version " + version : "";
+        li.append(name, itemVer);
+        itemsEl.append(li);
+      }
+    }
+
+    function setTheme(pref) {
+      const lock = pref === "dark" || pref === "light" ? pref : "system";
+      document.documentElement.dataset.theme = lock;
+    }
+
+    function apply(p) {
+      const stage = p.Stage ?? p.stage ?? "";
+      const bytes = Number(p.Bytes ?? p.bytes ?? 0);
+      const total = Number(p.Total ?? p.total ?? 0);
+      const text = p.Message ?? p.message ?? "";
+      const action = p.Action ?? p.action ?? "立即更新";
+      const version = p.Version ?? p.version ?? "";
+      const err = stage === "error";
+      const isOffer = stage === "offer";
+      const labels = { download: "正在下载", unpack: "正在安装" };
+      const hasProgress = Boolean(labels[stage]) && total > 0;
+
+      offer.hidden = !isOffer;
+      status.hidden = isOffer;
+      retry.hidden = !err;
+      if (isOffer) {
+        const items = p.Items ?? p.items ?? [];
+        const many = items.length > 1;
+        offerMsg.textContent = text;
+        applyBtn.textContent = action;
+        applyBtn.hidden = false;
+        itemsEl.hidden = !many;
+        if (many) renderItems(items);
+        ver.hidden = many || !version;
+        ver.textContent = !many && version ? "Version " + version : "";
+        return;
+      }
+      if (err) {
+        bar.hidden = true;
+        bar.classList.remove("indeterminate");
+        msg.hidden = !text;
+        msg.textContent = text;
+        return;
+      }
+      bar.hidden = false;
+      if (hasProgress) {
+        const pct = Math.min(100, Math.round(bytes / total * 100));
+        bar.classList.remove("indeterminate");
+        fill.style.width = pct + "%";
+        msg.hidden = false;
+        msg.textContent = labels[stage] + " " + pct + "%";
+        return;
+      }
+      bar.classList.add("indeterminate");
+      fill.style.width = "";
+      msg.hidden = false;
+      msg.textContent = text || INIT;
+    }
+
+    Events.On("dsh-go:theme-pref", (e) => setTheme(e?.data ?? e ?? "system"));
+    Events.On("dsh-go:prep", (e) => apply(e?.data ?? e ?? {}));
+    retry.addEventListener("click", () => {
+      retry.hidden = true;
+      apply({});
+      Events.Emit("dsh-go:prep-retry");
+    });
+    applyBtn.addEventListener("click", () => Events.Emit("dsh-go:prep-apply"));
+    later.addEventListener("click", () => Events.Emit("dsh-go:prep-later"));
+    Events.Emit("dsh-go:prep-ready");
+  </script>
+</body>
+</html>

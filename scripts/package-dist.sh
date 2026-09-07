@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build people-facing release artifacts:
 #   macOS  — ULMO DMG (signed/notarized when Apple secrets are present)
-#   Windows — UPX-compressed standalone exe
+#   Windows — zip of the standalone exe
 # Runtime zips are produced separately by scripts/package-runtime.sh.
 set -euo pipefail
 
@@ -59,14 +59,23 @@ elif [[ "$os" == MINGW* || "$os" == MSYS* || "$os" == CYGWIN* || "$os" == Window
     echo "missing $exe; build the Windows binary first" >&2
     exit 1
   fi
-  if command -v upx >/dev/null; then
-    upx --best --lzma "$exe"
+  inner="${APP_NAME}.exe"
+  cp "$exe" "$stage/$inner"
+  asset="${APP_NAME}-windows-${goarch}.zip"
+  out="$BIN_DIR/$asset"
+  rm -f "$out"
+  if command -v zip >/dev/null; then
+    (cd "$stage" && zip -9 -q "$out" "$inner")
   else
-    echo "package-dist: upx not on PATH; publishing uncompressed exe" >&2
+    py=python3
+    command -v python3 >/dev/null || py=python
+    "$py" -c "
+import zipfile, sys
+with zipfile.ZipFile(sys.argv[1], 'w', zipfile.ZIP_DEFLATED) as z:
+    z.write(sys.argv[2], sys.argv[3])
+" "$out" "$stage/$inner" "$inner"
   fi
-  asset="${APP_NAME}-windows-${goarch}.exe"
-  cp "$exe" "$BIN_DIR/$asset"
-  echo "$BIN_DIR/$asset"
+  echo "$out"
 else
   echo "package-dist: unsupported OS $os" >&2
   exit 1

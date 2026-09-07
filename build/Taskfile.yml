@@ -19,13 +19,6 @@ tasks:
     generates:
       - "darwin/icons.icns"
       - "windows/icon.ico"
-      - "windows/appicon.png"
     cmds:
       - wails3 generate icons -input appicon.png -macfilename darwin/icons.icns -windowsfilename windows/icon.ico -iconcomposerinput appicon.icon -macassetdir darwin
-      - go run -mod=mod ../scripts/round-windows-icon/main.go appicon.png windows/appicon.png windows/icon.ico
-
-  update:build-assets:
-    summary: Regenerates Info.plist / Windows info from config.yml
-    dir: build
-    cmds:
-      - wails3 update build-assets -name "{{.APP_NAME}}" -binaryname "{{.APP_NAME}}" -config config.yml -dir .
+      - go run -mod=mod ../scripts/round-windows-icon/main.go appicon.png windows/icon.ico

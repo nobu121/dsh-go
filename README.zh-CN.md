@@ -13,6 +13,16 @@
 
 发版目标：**macOS** 和 **Windows**。
 
+## 目录
+
+```
+main.go            # Wails 入口（嵌入 frontend 与图标）
+frontend/          # 准备页
+internal/app/      # 壳、运行时、更新、Windows 自安装
+build/             # Wails 打包资源
+scripts/
+```
+
 ## 运行时
 
 可安装包是 **纯壳**——包里没有 Node 和 `@deepseek-ai/dsh`。启动时壳会用它能找到的
@@ -51,13 +61,15 @@ go build -mod=mod -o dsh-go .
 ## 打包
 
 ```sh
-wails3 task package:dist      # macOS DMG 或 Windows exe
+wails3 task package:dist      # macOS DMG 或 Windows zip
 bash scripts/sync-dsh.sh
 wails3 task package:runtime   # 频道用的运行时资产
 ```
 
-两种应用制品都不含运行时。配上 Apple Developer ID 与公证密钥后，CI 会签名并公证
-DMG，从而去掉 macOS「仍要打开」提示。
+两种应用制品都不含运行时。Windows 下双击正式版 exe 会自安装到 `%APPDATA%\dsh-go`，
+在桌面建快捷方式，并写入「安装的应用」卸载项；卸载会去掉快捷方式、我们注册的
+`dsh` shim（若有）、runtime 和 exe。配上 Apple Developer ID 与公证密钥后，CI 会签
+名并公证 DMG，从而去掉 macOS「仍要打开」提示。
 
 安装包与运行时资产发在 **GitHub Releases**，并同步到 **CNB Releases**
 （`https://cnb.cool/nobu121/dsh-go/-/releases`）。日常开发远程仍是 CNB（`origin`）。

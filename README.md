@@ -13,6 +13,16 @@ The shell owns three jobs:
 
 Supported release targets: **macOS** and **Windows**.
 
+## Layout
+
+```
+main.go            # Wails entry (embeds frontend + icons)
+frontend/          # prep page
+internal/app/      # shell, runtime, updates, Windows self-install
+build/             # Wails packaging assets
+scripts/
+```
+
 ## Runtime
 
 The installable app is **shell-only** — Node and `@deepseek-ai/dsh` are not
@@ -57,12 +67,15 @@ works) to exercise the download path.
 ## Package
 
 ```sh
-wails3 task package:dist      # macOS DMG or Windows exe
+wails3 task package:dist      # macOS DMG or Windows zip
 bash scripts/sync-dsh.sh
 wails3 task package:runtime   # runtime assets for the channel
 ```
 
-Neither app artifact includes a runtime. Add Apple Developer ID + notary
+Neither app artifact includes a runtime. On Windows the release exe copies
+itself into `%APPDATA%\dsh-go`, adds a desktop shortcut, and registers in
+Installed apps; uninstall removes the shortcut, our `dsh` shim (if we
+registered it), the runtime, and the exe. Add Apple Developer ID + notary
 secrets to have CI sign and notarize the DMG and skip the macOS Gatekeeper
 prompt.
 

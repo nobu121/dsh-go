@@ -1,0 +1,117 @@
+package app
+
+import (
+	"archive/zip"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+)
+
+func TestDesktopReleaseMirrors(t *testing.T) {
+	got := desktopReleaseMirrors("v0.2.0")
+	if len(got) != 2 {
+		t.Fatalf("got %#v", got)
+	}
+	if !strings.Contains(got[0], "cnb.cool") || !strings.HasSuffix(got[0], "/v0.2.0") {
+		t.Fatalf("cnb = %s", got[0])
+	}
+	if !strings.Contains(got[1], "github.com") || !strings.HasSuffix(got[1], "/v0.2.0") {
+		t.Fatalf("github = %s", got[1])
+	}
+}
+
+func TestDesktopAssetName(t *testing.T) {
+	name := desktopAssetName()
+	if name == "" || !strings.HasPrefix(name, "dsh-go-") {
+		t.Fatalf("asset = %q", name)
+	}
+	switch runtime.GOOS {
+	case "windows":
+		if !strings.HasSuffix(name, ".zip") {
+			t.Fatalf("windows asset should be zip, got %q", name)
+		}
+	case "darwin":
+		if !strings.HasSuffix(name, ".dmg") {
+			t.Fatalf("darwin asset should be dmg, got %q", name)
+		}
+	}
+}
+
+func TestUnpackDesktopExePrefersDSHGo(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "dsh-go-windows-amd64.zip")
+	f, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := zip.NewWriter(f)
+	other, err := w.Create("helper.exe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := other.Write([]byte("helper")); err != nil {
+		t.Fatal(err)
+	}
+	want, err := w.Create("dsh-go.exe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := want.Write([]byte("payload")); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	exe, err := unpackDesktopExe(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Remove(exe) })
+	got, err := os.ReadFile(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "payload" {
+		t.Fatalf("extracted %q", got)
+	}
+}
+
+func TestUnpackDesktopExeMissing(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "empty.zip")
+	f, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := zip.NewWriter(f)
+	readme, err := w.Create("README.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readme.Write([]byte("no exe")); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := unpackDesktopExe(zipPath); err == nil {
+		t.Fatal("expected error for zip without exe")
+	}
+}
+
+func TestMirrorName(t *testing.T) {
+	if got := mirrorName("https://cnb.cool/nobu121/dsh-go/-/releases/download/v1"); got != "CNB" {
+		t.Fatalf("cnb = %s", got)
+	}
+	if got := mirrorName("https://github.com/nobu121/dsh-go/releases/download/v1"); got != "GitHub" {
+		t.Fatalf("github = %s", got)
+	}
+}

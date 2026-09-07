@@ -18,17 +18,17 @@ const cornerRatio = 0.22
 var icoSizes = []int{256, 128, 64, 48, 32, 16}
 
 func main() {
-	if len(os.Args) != 4 {
-		fmt.Fprintf(os.Stderr, "usage: %s <src.png> <dest.png> <dest.ico>\n", filepath.Base(os.Args[0]))
+	if len(os.Args) != 3 {
+		fmt.Fprintf(os.Stderr, "usage: %s <src.png> <dest.ico>\n", filepath.Base(os.Args[0]))
 		os.Exit(2)
 	}
-	if err := generate(os.Args[1], os.Args[2], os.Args[3]); err != nil {
+	if err := generate(os.Args[1], os.Args[2]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func generate(srcPath, pngPath, icoPath string) error {
+func generate(srcPath, icoPath string) error {
 	srcFile, err := os.Open(srcPath)
 	if err != nil {
 		return err
@@ -41,10 +41,6 @@ func generate(srcPath, pngPath, icoPath string) error {
 	}
 
 	rounded := applyRound(src, cornerRatio)
-	if err := writePNG(pngPath, rounded); err != nil {
-		return err
-	}
-
 	images := make([]image.Image, 0, len(icoSizes))
 	for _, size := range icoSizes {
 		images = append(images, resizeArea(rounded, size, size))
@@ -107,18 +103,6 @@ func resizeArea(src *image.RGBA, nw, nh int) *image.RGBA {
 		}
 	}
 	return dst
-}
-
-func writePNG(path string, im image.Image) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	return png.Encode(f, im)
 }
 
 func writeICO(path string, images []image.Image) error {

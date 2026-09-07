@@ -49,7 +49,7 @@ jobs:
             path: bin/dsh-go-darwin-arm64.dmg
           - os: windows-latest
             artifact: windows-amd64
-            path: bin/dsh-go-windows-amd64.exe
+            path: bin/dsh-go-windows-amd64.zip
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -70,10 +70,6 @@ jobs:
       - name: Install wails3
         shell: bash
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.16
-      - name: Install UPX
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: choco install upx -y --no-progress
       - name: Package dist
         shell: bash
         env:
@@ -103,7 +99,7 @@ jobs:
         run: |
           cd dist
           shopt -s nullglob
-          sha256sum dsh-go-*.dmg dsh-go-*.exe > SHA256SUMS
+          sha256sum dsh-go-*.dmg dsh-go-*.zip > SHA256SUMS
           cat SHA256SUMS
       - name: Publish GitHub release
         env:
@@ -115,7 +111,7 @@ jobs:
             ver="$(tr -d '[:space:]' < app.version)"
           fi
           tag="v${ver}"
-          notes="dsh-go client ${ver}: macOS DMG and Windows exe. The dsh runtime updates on its own from the runtime-latest channel."
+          notes="dsh-go client ${ver}: macOS DMG and Windows zip. The dsh runtime updates on its own from the runtime-latest channel."
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release edit "$tag" --prerelease=false --latest --notes "$notes"
             gh release upload "$tag" dist/dsh-go-* dist/SHA256SUMS --clobber
