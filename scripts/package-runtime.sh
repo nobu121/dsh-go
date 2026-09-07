@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Zip vendor/dsh as dsh-runtime-<os>-<arch>.zip (top-level node + npm tree).
+# Zip vendor/dsh as dsh-runtime-<os>-<arch>.zip (top-level node + npm tree)
+# and write the runtime.json the shell reads to learn the current dsh version.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -41,4 +42,18 @@ rm -f "$out"
       "${out%.zip}" "$DEST"
   fi
 )
+
+ver="$(tr -d '[:space:]' < "$DEST/VERSION" 2>/dev/null || true)"
+if [[ -z "$ver" ]]; then
+  echo "missing $DEST/VERSION; run scripts/sync-dsh.sh first" >&2
+  exit 1
+fi
+cat > "$BIN_DIR/runtime.json" <<EOF
+{
+  "version": "${ver}",
+  "updated": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+
 echo "$out"
+echo "$BIN_DIR/runtime.json"

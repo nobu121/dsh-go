@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -12,6 +13,33 @@ func TestLookNamedFindsExtraDir(t *testing.T) {
 	dir := t.TempDir()
 	exe := filepath.Join(dir, "dsh")
 	if err := os.WriteFile(exe, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	prev := lookPath
+	prevDirs := extraBinDirsFn
+	lookPath = func(string) (string, error) { return "", exec.ErrNotFound }
+	extraBinDirsFn = func() []string { return []string{dir} }
+	t.Cleanup(func() {
+		lookPath = prev
+		extraBinDirsFn = prevDirs
+	})
+	got, err := lookNamed("dsh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != exe {
+		t.Fatalf("got %s, want %s", got, exe)
+	}
+}
+
+func TestLookNamedFindsWindowsCmd(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("windows PATHEXT")
+	}
+	t.Setenv("DSH_SKIP_LOGIN_PATH", "1")
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "dsh.cmd")
+	if err := os.WriteFile(exe, []byte("@echo off\r\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	prev := lookPath

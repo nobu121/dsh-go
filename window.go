@@ -20,19 +20,25 @@ type shellWindows struct {
 	mu      sync.Mutex
 	win     *application.WebviewWindow
 	prep    *application.WebviewWindow
+	harness *application.WebviewWindow
 	capsule *updateCapsule
 }
 
 func (s *shellWindows) showPrep() *application.WebviewWindow {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.harness != nil {
+		s.harness.Hide()
+	}
 	if s.prep != nil {
 		s.prep.Show()
 		s.win = s.prep
+		setThemeTarget(func() *application.WebviewWindow { return s.current() })
 		return s.prep
 	}
 	s.prep = newPrepWindow(s.app)
 	s.win = s.prep
+	setThemeTarget(func() *application.WebviewWindow { return s.current() })
 	s.prep.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
 		s.mu.Lock()
 		closingPrep := s.win == s.prep
@@ -52,17 +58,28 @@ func (s *shellWindows) current() *application.WebviewWindow {
 
 func (s *shellWindows) showHarness(dshURL string) *application.WebviewWindow {
 	s.mu.Lock()
+	if s.harness != nil {
+		h := s.harness
+		prep := s.prep
+		s.win = h
+		s.mu.Unlock()
+		h.SetURL(dshURL)
+		h.Show()
+		if prep != nil {
+			prep.Hide()
+		}
+		setThemeTarget(func() *application.WebviewWindow { return s.current() })
+		return h
+	}
 	from := s.win
 	prep := s.prep
 	s.mu.Unlock()
 
 	log.Printf("opening harness window")
 	next := newHarnessWindow(s.app, dshURL, from)
-	cap := newUpdateCapsule(s.app, next)
+	setThemeTarget(func() *application.WebviewWindow { return s.current() })
 	setThemeListener(func(dark bool) {
-		if !themeChanged(dark) {
-			return
-		}
+		rememberTheme(dark)
 		applyChrome(next, dark)
 	})
 	next.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
@@ -71,7 +88,7 @@ func (s *shellWindows) showHarness(dshURL string) *application.WebviewWindow {
 
 	s.mu.Lock()
 	s.win = next
-	s.capsule = cap
+	s.harness = next
 	s.mu.Unlock()
 
 	var shown atomic.Bool
@@ -81,6 +98,7 @@ func (s *shellWindows) showHarness(dshURL string) *application.WebviewWindow {
 			return
 		}
 		next.Show()
+		applyChrome(next, knownThemeDark())
 		if prep != nil {
 			prep.Hide()
 		}
@@ -106,8 +124,11 @@ func newPrepWindow(app *application.App) *application.WebviewWindow {
 		URL:                  "/",
 		AllowSimpleEventEmit: true,
 		Mac:                  macChrome(dark),
-		Windows:              application.WindowsWindow{Theme: windowsTheme()},
-		BackgroundColour:     themeBackground(dark),
+		Windows: application.WindowsWindow{
+			Theme:       windowsTheme(),
+			CustomTheme: windowsCustomTheme(),
+		},
+		BackgroundColour: themeBackground(dark),
 	})
 	applyNativeChrome(win, dark)
 	return win
@@ -124,8 +145,11 @@ func newHarnessWindow(app *application.App, dshURL string, from *application.Web
 		JS:                   themeWatchJS,
 		AllowSimpleEventEmit: true,
 		Mac:                  macChrome(dark),
-		Windows:              application.WindowsWindow{Theme: windowsTheme()},
-		BackgroundColour:     themeBackground(dark),
+		Windows: application.WindowsWindow{
+			Theme:       windowsTheme(),
+			CustomTheme: windowsCustomTheme(),
+		},
+		BackgroundColour: themeBackground(dark),
 	}
 	if from != nil {
 		opts.Width, opts.Height = from.Size()

@@ -97,7 +97,7 @@ func TestResolveCommandPrefersPathDSH(t *testing.T) {
 	t.Setenv("DSH_EXE", "")
 	t.Setenv("DSH_REPO", filepath.Join(wd, "missing-repo"))
 	t.Setenv("DSH_RUNTIME_DIR", filepath.Join(wd, "cache-empty"))
-	writeRuntimeTree(t, filepath.Join(wd, "vendor", "dsh"), currentVersion())
+	writeRuntimeTree(t, filepath.Join(wd, "vendor", "dsh"), bundledDSHVersion())
 	exe := filepath.Join(wd, "dsh")
 	if err := os.WriteFile(exe, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
@@ -128,7 +128,7 @@ func TestResolveCommandUsesMatchingCache(t *testing.T) {
 	t.Setenv("DSH_REPO", filepath.Join(wd, "missing-repo"))
 	cache := filepath.Join(wd, "cache")
 	t.Setenv("DSH_RUNTIME_DIR", cache)
-	node := writeRuntimeTree(t, cache, currentVersion())
+	node := writeRuntimeTree(t, cache, bundledDSHVersion())
 	r, err := DSHConfig{}.resolve()
 	if err != nil {
 		t.Fatal(err)
@@ -138,7 +138,10 @@ func TestResolveCommandUsesMatchingCache(t *testing.T) {
 	}
 }
 
-func TestResolveCommandSkipsMismatchedCache(t *testing.T) {
+// An older cache still launches: the version gap is surfaced as an upgrade
+// offer, not as a reason to refuse a working runtime (which used to strand
+// offline users after every shell update).
+func TestResolveCommandUsesOlderCache(t *testing.T) {
 	wd := t.TempDir()
 	t.Chdir(wd)
 	isolateLookPath(t)
@@ -146,14 +149,20 @@ func TestResolveCommandSkipsMismatchedCache(t *testing.T) {
 	t.Setenv("DSH_REPO", filepath.Join(wd, "missing-repo"))
 	cache := filepath.Join(wd, "cache")
 	t.Setenv("DSH_RUNTIME_DIR", cache)
-	writeRuntimeTree(t, cache, "0.0.1-rc.0")
-	node := writeRuntimeTree(t, filepath.Join(wd, "vendor", "dsh"), "")
+	node := writeRuntimeTree(t, cache, "0.0.1-rc.0")
+	writeRuntimeTree(t, filepath.Join(wd, "vendor", "dsh"), "")
 	r, err := DSHConfig{}.resolve()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Kind != sourceBundled || r.Argv[0] != node {
-		t.Fatalf("got kind=%s argv=%v, want bundled", r.Kind, r.Argv)
+	if r.Kind != sourceCache || r.Argv[0] != node {
+		t.Fatalf("got kind=%s argv=%v, want cache", r.Kind, r.Argv)
+	}
+	if got := installedDSHVersion(r); got != "0.0.1-rc.0" {
+		t.Fatalf("installed version = %q", got)
+	}
+	if !shouldOfferDSHUpdate(installedDSHVersion(r), "0.1.2-rc.1") {
+		t.Fatal("older cache should be offered an upgrade")
 	}
 }
 
@@ -203,5 +212,49 @@ func TestParseDSHWebURL(t *testing.T) {
 	}
 	if _, ok := parseDSHWebURL("dsh web: http://127.0.0.1:43123/"); ok {
 		t.Fatal("URL without token must be ignored")
+	}
+}
+
+func TestDefaultHomeDirMatchesNpmDSH(t *testing.T) {
+	t.Setenv("DSH_HOME", "")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(home, ".dsh")
+	if got := defaultHomeDir(); got != want {
+		t.Fatalf("got %s, want %s", got, want)
+	}
+}
+
+func TestDefaultHomeDirHonorsEnv(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DSH_HOME", dir)
+	if got := defaultHomeDir(); got != dir {
+		t.Fatalf("got %s, want %s", got, dir)
+	}
+	t.Setenv("DSH_HOME", "   ")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := defaultHomeDir(); got != filepath.Join(home, ".dsh") {
+		t.Fatalf("blank DSH_HOME = %s", got)
+	}
+}
+
+func TestExpandHomePath(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := expandHomePath("~"); got != home {
+		t.Fatalf("~ = %s", got)
+	}
+	if got := expandHomePath(filepath.Join("~", ".dsh")); got != filepath.Join(home, ".dsh") {
+		t.Fatalf("~/ = %s", got)
+	}
+	if got := expandHomePath(`/abs/dsh`); got != `/abs/dsh` {
+		t.Fatalf("abs = %s", got)
 	}
 }

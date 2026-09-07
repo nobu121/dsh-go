@@ -2,7 +2,10 @@
 # Mirror a GitHub (or local) release directory onto the CNB repo release.
 # Usage: sync-release-to-cnb.sh <tag> <asset-dir>
 # Env: CNB_TOKEN (required), CNB_REPO (default nobu121/dsh-go),
-#      CNB_API (default https://api.cnb.cool), CNB_TARGET (default main)
+#      CNB_API (default https://api.cnb.cool), CNB_TARGET (default main),
+#      CNB_PRERELEASE / CNB_MAKE_LATEST (default false / true), CNB_NOTES.
+# The runtime channel mirrors as a prerelease at a fixed tag so it never
+# becomes the "latest" download for humans.
 set -euo pipefail
 
 if [[ $# -lt 2 ]]; then
@@ -15,6 +18,8 @@ DIR="$2"
 CNB_API="${CNB_API:-https://api.cnb.cool}"
 CNB_REPO="${CNB_REPO:-nobu121/dsh-go}"
 CNB_TARGET="${CNB_TARGET:-main}"
+CNB_PRERELEASE="${CNB_PRERELEASE:-false}"
+CNB_MAKE_LATEST="${CNB_MAKE_LATEST:-true}"
 TOKEN="${CNB_TOKEN:-}"
 
 if [[ -z "$TOKEN" ]]; then
@@ -55,7 +60,7 @@ code="$(curl -sS -o "$status_body" -w '%{http_code}' \
 if [[ "$code" == "200" ]]; then
   rid="$(json_field id < "$status_body")"
 else
-  notes="Shell-only dsh-go ${TAG#v} plus on-demand dsh-runtime zips for macOS (arm64) and Windows (amd64)."
+  notes="${CNB_NOTES:-dsh-go ${TAG#v}}"
   payload="$(python3 -c '
 import json,sys
 print(json.dumps({
@@ -63,10 +68,10 @@ print(json.dumps({
   "name": sys.argv[1],
   "body": sys.argv[2],
   "target_commitish": sys.argv[3],
-  "prerelease": True,
-  "make_latest": "true",
+  "prerelease": sys.argv[4] == "true",
+  "make_latest": sys.argv[5],
 }))
-' "$TAG" "$notes" "$CNB_TARGET")"
+' "$TAG" "$notes" "$CNB_TARGET" "$CNB_PRERELEASE" "$CNB_MAKE_LATEST")"
   cnb_api POST "/${CNB_REPO}/-/releases" --data-binary "$payload" > "$status_body"
   rid="$(json_field id < "$status_body")"
 fi
@@ -80,7 +85,7 @@ fi
 echo "CNB release ${TAG} id=${rid}"
 
 shopt -s nullglob
-assets=("$DIR"/dsh-go-* "$DIR"/dsh-runtime-* "$DIR"/SHA256SUMS)
+assets=("$DIR"/dsh-go-* "$DIR"/dsh-runtime-* "$DIR"/runtime.json "$DIR"/SHA256SUMS)
 if [[ ${#assets[@]} -eq 0 ]]; then
   echo "no release assets in $DIR" >&2
   exit 1

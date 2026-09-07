@@ -31,12 +31,33 @@ func main() {
 	registerThemeEvents(app)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	ui := &shellWindows{app: app}
+	offer := newUpdateCapsule()
+	ui := &shellWindows{app: app, capsule: offer}
 
 	var (
-		dsh  *DSH
-		prep prepState
+		dsh          *DSH
+		prep         prepState
+		updaterReady bool
 	)
+
+	emitPrep := func(p PrepProgress) {
+		prep.store(p)
+		app.Event.Emit(prepEvent, p)
+	}
+
+	presentOffer := func() {
+		if _, _, ok := offer.pending(); !ok {
+			return
+		}
+		ui.showPrep()
+		emitPrep(offer.progress())
+	}
+
+	showDSHUpdate := func(ver string) {
+		offer.showDSH(ver)
+		presentOffer()
+	}
+
 	dsh = NewDSH(DSHConfig{
 		Home: defaultHomeDir(),
 		OnPrep: func(p PrepProgress) {
@@ -47,8 +68,14 @@ func main() {
 			}
 			app.Event.Emit(prepEvent, p)
 		},
+		AfterResolve: func(ctx context.Context, d *DSH) {
+			waitStartupOffer(ctx, app, d, offer, presentOffer, emitPrep, updaterReady)
+		},
 	}, func(dshURL string) {
 		prep.setURL(dshURL)
+		if _, _, ok := offer.pending(); ok {
+			return
+		}
 		app.Event.Emit(openHarnessEvent, dshURL)
 	})
 
@@ -58,23 +85,16 @@ func main() {
 			return
 		}
 		ui.showHarness(dshURL)
-		go offerDSHUpdate(dsh, func(ver string) {
-			if c := ui.capsule; c != nil {
-				c.showDSH(ver)
-			}
-		})
 	})
 
 	app.Event.On(showPrepEvent, func(*application.CustomEvent) {
-		if prep.readyURL() != "" {
-			return
-		}
 		ui.showPrep()
 	})
 
 	app.Event.On(prepReadyEvent, func(*application.CustomEvent) {
 		app.Event.Emit(themePrefEvent, lockedThemePreference())
-		if url := prep.readyURL(); url != "" {
+		if _, _, ok := offer.pending(); ok {
+			app.Event.Emit(prepEvent, offer.progress())
 			return
 		}
 		if p, ok := prep.last(); ok {
@@ -94,6 +114,10 @@ func main() {
 	}
 
 	app.Event.On(prepRetryEvent, func(*application.CustomEvent) {
+		if _, _, ok := offer.pending(); ok {
+			go applyAllUpdates(ctx, app, emitPrep, presentOffer, dsh, offer)
+			return
+		}
 		if url := dsh.LastURL(); url != "" && supervising.Load() {
 			app.Event.Emit(openHarnessEvent, url)
 			return
@@ -101,14 +125,16 @@ func main() {
 		go runSupervisor()
 	})
 
-	if setupUpdater(app) {
+	updaterReady = setupUpdater(app)
+	if updaterReady {
 		app.Event.On(updater.EventUpdateReady, func(e *application.CustomEvent) {
 			rel, ok := e.Data.(*updater.Release)
 			if !ok || rel == nil {
 				return
 			}
-			if c := ui.capsule; c != nil {
-				c.show(rel.Version)
+			offer.stashApp(rel.Version)
+			if _, _, pending := offer.pending(); pending && !offer.isDSH() {
+				presentOffer()
 			}
 		})
 		app.Event.On(manualUpdateEvt, func(e *application.CustomEvent) {
@@ -116,30 +142,27 @@ func main() {
 			if ver == "" {
 				return
 			}
-			if c := ui.capsule; c != nil {
-				c.show(ver)
-			}
+			offer.stashApp(ver)
+			presentOffer()
 		})
 		go runUpdateLoop(ctx, app)
 	}
+	// Independent of the shell updater: the runtime channel moves on its own
+	// cadence, so a long-running session still notices a new dsh.
+	go runDSHUpdateLoop(ctx, dsh, showDSHUpdate)
 
-	app.Event.On(capsuleEvent, func(*application.CustomEvent) {
-		c := ui.capsule
-		if c != nil && c.kind == capsuleKindDSH {
-			go applyDSHUpdate(ctx, app, ui, dsh, c)
-			return
-		}
-		if u := takeManualUpdateURL(); u != "" {
-			if err := openURL(u); err != nil {
-				log.Printf("open update: %v", err)
-			}
-			return
-		}
-		if err := app.Updater.Restart(ctx); err != nil {
-			log.Printf("update restart: %v", err)
+	app.Event.On(prepApplyEvent, func(*application.CustomEvent) {
+		go applyAllUpdates(ctx, app, emitPrep, presentOffer, dsh, offer)
+	})
+
+	app.Event.On(prepLaterEvent, func(*application.CustomEvent) {
+		offer.proceed()
+		if url := dsh.LastURL(); url != "" {
+			app.Event.Emit(openHarnessEvent, url)
 		}
 	})
 
+	prep.store(initialPrepProgress(DSHConfig{Home: defaultHomeDir()}))
 	ui.showPrep()
 	go runSupervisor()
 
@@ -153,48 +176,114 @@ func main() {
 	}
 }
 
-func offerDSHUpdate(dsh *DSH, show func(string)) {
+func waitStartupOffer(
+	ctx context.Context,
+	app *application.App,
+	dsh *DSH,
+	offer *updateCapsule,
+	present func(),
+	emit func(PrepProgress),
+	updaterReady bool,
+) {
+	emit(PrepProgress{Stage: "detect", Message: "正在检查更新…"})
+	simulateUpdates(offer)
+	if !updateSimulationActive() {
+		if _, _, ok := offer.pending(); !ok {
+			offerDSHUpdate(ctx, dsh, offer.showDSH)
+		}
+		if updaterReady {
+			if ver := checkShellUpdate(ctx, app); ver != "" {
+				offer.stashApp(ver)
+			}
+		}
+	}
+	if _, _, ok := offer.pending(); !ok {
+		return
+	}
+	present()
+	offer.wait(ctx)
+}
+
+func offerDSHUpdate(ctx context.Context, dsh *DSH, show func(string)) {
 	src := dsh.Source()
 	if !canUpdateDSH(src.Kind) {
 		return
 	}
-	pin := currentVersion()
 	installed := installedDSHVersion(src)
-	if !shouldOfferDSHUpdate(installed, pin) {
+	if installed == "" {
 		return
 	}
-	show(pin)
+	ctx, cancel := context.WithTimeout(ctx, dshCheckTimeout)
+	defer cancel()
+	target := targetDSHVersion(ctx)
+	if !shouldOfferDSHUpdate(installed, target) {
+		return
+	}
+	show(target)
 }
 
-func applyDSHUpdate(ctx context.Context, app *application.App, ui *shellWindows, dsh *DSH, capsule *updateCapsule) {
-	src := dsh.Source()
-	pin := currentVersion()
-	capsule.hide()
-	win := ui.showPrep()
-	if win != nil {
-		win.SetURL("/")
+func applyAllUpdates(ctx context.Context, app *application.App, emit func(PrepProgress), present func(), dsh *DSH, offer *updateCapsule) {
+	if offer.dshVersion() != "" {
+		rel := shellVersion()
+		if v := offer.appVersion(); v != "" {
+			rel = v
+		}
+		if err := applyDSHUpdateNow(ctx, emit, dsh, offer.dshVersion(), rel); err != nil {
+			log.Printf("dsh update: %v", err)
+			offer.showDSH(offer.dshVersion())
+			p := offer.progress()
+			p.Message = err.Error()
+			emit(p)
+			return
+		}
+		if dsh.LastURL() != "" {
+			dsh.killCurrent()
+		}
+		offer.clearDSH()
 	}
-	reportPrep(func(p PrepProgress) { app.Event.Emit(prepEvent, p) }, PrepProgress{
-		Stage:   "update",
-		Message: "正在更新 dsh 到 " + pin + "…",
-	})
+	if offer.appVersion() != "" {
+		emit(PrepProgress{Stage: "update", Message: "正在选择下载源…"})
+		path, err := downloadDesktopUpdate(ctx, offer.appVersion(), emit)
+		if err != nil {
+			log.Printf("client update: %v", err)
+			offer.restoreAppIfPending()
+			emit(PrepProgress{Stage: "error", Message: err.Error()})
+			present()
+			return
+		}
+		emit(PrepProgress{Stage: "update", Message: "正在安装客户端…"})
+		if err := installDesktopPackage(path); err != nil {
+			log.Printf("client install: %v", err)
+			offer.restoreAppIfPending()
+			emit(PrepProgress{Stage: "error", Message: err.Error()})
+			present()
+			return
+		}
+		if desktopInstallRestarts() {
+			if app != nil {
+				app.Quit()
+			}
+			return
+		}
+		offer.clearApp()
+	}
+	offer.proceed()
+}
 
-	var err error
-	switch src.Kind {
+func applyDSHUpdateNow(ctx context.Context, emit func(PrepProgress), dsh *DSH, target, release string) error {
+	if target == "" {
+		target = targetDSHVersion(ctx)
+	}
+	emit(PrepProgress{
+		Stage:   "update",
+		Message: "正在更新运行时到 " + target + "…",
+	})
+	switch dsh.Source().Kind {
 	case sourcePath:
-		err = upgradeGlobalDSH(ctx, pin)
-	case sourceCache:
-		err = fetchCachedRuntime(ctx, func(p PrepProgress) { app.Event.Emit(prepEvent, p) })
+		return upgradeGlobalDSH(ctx, target)
+	case sourceCache, sourceBundled:
+		return fetchCachedRuntimeVersion(ctx, emit, release)
 	default:
-		err = errNoDSH
+		return errNoDSH
 	}
-	if err != nil {
-		log.Printf("dsh update: %v", err)
-		app.Event.Emit(prepEvent, PrepProgress{Stage: "error", Message: err.Error()})
-		capsule.restoreAppIfPending()
-		return
-	}
-	capsule.dshVer = ""
-	capsule.restoreAppIfPending()
-	dsh.killCurrent()
 }

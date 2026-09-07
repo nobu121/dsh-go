@@ -22,20 +22,61 @@ func lookNamed(name string) (string, error) {
 	if p, err := lookPath(name); err == nil && p != "" {
 		return p, nil
 	}
-	exe := name
-	if runtime.GOOS == "windows" && !strings.HasSuffix(strings.ToLower(name), ".exe") {
-		exe = name + ".exe"
-	}
 	for _, dir := range extraBinDirsFn() {
-		if dir == "" {
-			continue
-		}
-		cand := filepath.Join(dir, exe)
-		if fi, err := os.Stat(cand); err == nil && !fi.IsDir() {
-			return cand, nil
+		if p := lookInDir(dir, name); p != "" {
+			return p, nil
 		}
 	}
 	return "", exec.ErrNotFound
+}
+
+func lookInDir(dir, name string) string {
+	if dir == "" || name == "" {
+		return ""
+	}
+	for _, cand := range pathCandidates(name) {
+		p := filepath.Join(dir, cand)
+		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+			return p
+		}
+	}
+	return ""
+}
+
+func pathCandidates(name string) []string {
+	if runtime.GOOS != "windows" {
+		return []string{name}
+	}
+	lower := strings.ToLower(name)
+	for _, ext := range pathExts() {
+		if strings.HasSuffix(lower, ext) {
+			return []string{name}
+		}
+	}
+	out := []string{name}
+	for _, ext := range pathExts() {
+		out = append(out, name+ext)
+	}
+	return out
+}
+
+func pathExts() []string {
+	raw := os.Getenv("PATHEXT")
+	if raw == "" {
+		raw = ".COM;.EXE;.BAT;.CMD"
+	}
+	var exts []string
+	for _, ext := range strings.Split(raw, ";") {
+		ext = strings.ToLower(strings.TrimSpace(ext))
+		if ext == "" {
+			continue
+		}
+		if !strings.HasPrefix(ext, ".") {
+			ext = "." + ext
+		}
+		exts = append(exts, ext)
+	}
+	return exts
 }
 
 func defaultExtraBinDirs() []string {
@@ -83,6 +124,7 @@ func defaultExtraBinDirs() []string {
 			add(filepath.Join(local, "fnm"))
 		}
 	}
+	add(dshGoBinDir())
 	return dirs
 }
 

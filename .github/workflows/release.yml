@@ -1,10 +1,16 @@
 name: Release
 
+# One release tag ships the client (DMG/exe) and the matching dsh runtime
+# zips. The in-app updater installs both with one button.
+
 on:
   workflow_call:
     inputs:
       version:
-        required: true
+        required: false
+        type: string
+      dsh_version:
+        required: false
         type: string
     secrets:
       CNB_TOKEN:
@@ -24,7 +30,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: dsh / product version (empty = dsh.version)
+        description: client version (empty = app.version)
+        required: false
+        type: string
+      dsh_version:
+        description: "@deepseek-ai/dsh version (empty = dsh.version)"
         required: false
         type: string
 
@@ -45,11 +55,13 @@ jobs:
             path: |
               bin/dsh-go-darwin-arm64.dmg
               bin/dsh-runtime-darwin-arm64.zip
+              bin/runtime.json
           - os: windows-latest
             artifact: windows-amd64
             path: |
               bin/dsh-go-windows-amd64.exe
               bin/dsh-runtime-windows-amd64.zip
+              bin/runtime.json
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -59,14 +71,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-      - name: Pin version
+      - name: Pin versions
         shell: bash
         run: |
           ver="${{ inputs.version }}"
           if [ -z "$ver" ]; then
-            ver="$(tr -d '[:space:]' < dsh.version)"
+            ver="$(tr -d '[:space:]' < app.version)"
           fi
-          printf '%s\n' "$ver" > dsh.version
+          printf '%s\n' "$ver" > app.version
+          bash scripts/sync-app-version.sh "$ver"
+          dsh="${{ inputs.dsh_version }}"
+          if [ -n "$dsh" ]; then
+            printf '%s\n' "$dsh" > dsh.version
+          fi
           echo "APP_VERSION=$ver" >> "$GITHUB_ENV"
           echo "RUNTIME_BASE_URL=https://cnb.cool/nobu121/dsh-go/-/releases/download/v${ver}" >> "$GITHUB_ENV"
       - name: Sync dsh runtime
@@ -116,46 +133,53 @@ jobs:
           shopt -s nullglob
           sha256sum dsh-go-*.dmg dsh-go-*.exe dsh-runtime-*.zip > SHA256SUMS
           cat SHA256SUMS
-      - name: Publish GitHub prerelease
+      - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
         run: |
           ver="$VERSION"
           if [ -z "$ver" ]; then
-            ver="$(tr -d '[:space:]' < dsh.version)"
+            ver="$(tr -d '[:space:]' < app.version)"
           fi
           tag="v${ver}"
-          notes="Shell-only dsh-go ${ver}: macOS DMG, Windows exe, plus on-demand dsh-runtime zips."
+          notes="dsh-go ${ver}: macOS DMG, Windows exe, and the matching dsh runtime zips. The app installs both with one update."
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release delete-asset "$tag" dsh-go-darwin-arm64.zip --yes || true
-            gh release delete-asset "$tag" dsh-go-windows-amd64.zip --yes || true
-            gh release upload "$tag" dist/dsh-go-* dist/dsh-runtime-* dist/SHA256SUMS --clobber
+            gh release edit "$tag" --prerelease=false --latest --notes "$notes"
+            gh release upload "$tag" dist/dsh-go-* dist/dsh-runtime-* dist/runtime.json dist/SHA256SUMS --clobber
           else
-            gh release create "$tag" dist/dsh-go-* dist/dsh-runtime-* dist/SHA256SUMS \
+            gh release create "$tag" dist/dsh-go-* dist/dsh-runtime-* dist/runtime.json dist/SHA256SUMS \
               --title "$tag" \
               --notes "$notes" \
-              --prerelease
+              --latest
           fi
       - name: Sync release to CNB
         env:
           CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
           CNB_REPO: nobu121/dsh-go
+          CNB_PRERELEASE: "false"
+          CNB_MAKE_LATEST: "true"
           VERSION: ${{ inputs.version }}
         run: |
           ver="$VERSION"
           if [ -z "$ver" ]; then
-            ver="$(tr -d '[:space:]' < dsh.version)"
+            ver="$(tr -d '[:space:]' < app.version)"
           fi
+          export CNB_NOTES="dsh-go ${ver}"
           bash scripts/sync-release-to-cnb.sh "v${ver}" dist
-      - name: Commit dsh.version
-        if: inputs.version != ''
+      - name: Commit versions
+        if: inputs.version != '' || inputs.dsh_version != ''
         run: |
-          ver="${{ inputs.version }}"
-          printf '%s\n' "$ver" > dsh.version
-          git add dsh.version
+          if [ -n "${{ inputs.version }}" ]; then
+            printf '%s\n' "${{ inputs.version }}" > app.version
+            bash scripts/sync-app-version.sh "${{ inputs.version }}"
+          fi
+          if [ -n "${{ inputs.dsh_version }}" ]; then
+            printf '%s\n' "${{ inputs.dsh_version }}" > dsh.version
+          fi
+          git add app.version dsh.version build/config.yml build/windows/info.json build/darwin/Info.plist
           git diff --cached --quiet && exit 0
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Bump bundled dsh to ${ver}"
+          git commit -m "Release ${{ inputs.version || 'client' }}"
           git push

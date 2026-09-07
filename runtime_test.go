@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -54,9 +55,11 @@ func TestFetchCachedRuntimeFileURL(t *testing.T) {
 	isolateLookPath(t)
 	stage := t.TempDir()
 	cache := filepath.Join(t.TempDir(), "cache")
-	pin := currentVersion()
+	// Deliberately unrelated to any version baked into the shell: the channel
+	// publishes whatever dsh is current and the zip describes itself.
+	const channelVer = "9.9.9"
 	zipPath := filepath.Join(stage, runtimeAssetName())
-	writeRuntimeZip(t, zipPath, pin)
+	writeRuntimeZip(t, zipPath, channelVer)
 	t.Setenv("DSH_RUNTIME_BASE_URL", fileURL(stage))
 	t.Setenv("DSH_RUNTIME_DIR", cache)
 	if err := fetchCachedRuntime(context.Background(), nil); err != nil {
@@ -65,8 +68,8 @@ func TestFetchCachedRuntimeFileURL(t *testing.T) {
 	if !runtimeLooksValid(cache) {
 		t.Fatal("cache missing node or bin.js")
 	}
-	if got := readRuntimeVersion(cache); got != pin {
-		t.Fatalf("VERSION = %q, want %q", got, pin)
+	if got := readRuntimeVersion(cache); got != channelVer {
+		t.Fatalf("VERSION = %q, want %q", got, channelVer)
 	}
 	argv, ok := cacheRuntimeCommand()
 	if !ok {
@@ -81,10 +84,9 @@ func TestFetchCachedRuntimeChecksum(t *testing.T) {
 	isolateLookPath(t)
 	stage := t.TempDir()
 	cache := filepath.Join(t.TempDir(), "cache")
-	pin := currentVersion()
 	asset := runtimeAssetName()
 	zipPath := filepath.Join(stage, asset)
-	writeRuntimeZip(t, zipPath, pin)
+	writeRuntimeZip(t, zipPath, "9.9.9")
 	sum, err := fileSHA256(zipPath)
 	if err != nil {
 		t.Fatal(err)
@@ -159,7 +161,7 @@ func TestRuntimeBaseURLsFallbackGitHub(t *testing.T) {
 		RuntimeBaseURL = oldBase
 		UpdateRepo = oldRepo
 	})
-	RuntimeBaseURL = "https://cnb.cool/nobu121/dsh-go/-/releases/download/v" + currentVersion()
+	RuntimeBaseURL = "https://cnb.cool/nobu121/dsh-go/-/releases/download/v0.2.0"
 	UpdateRepo = "nobu121/dsh-go"
 	got := runtimeBaseURLs()
 	if len(got) != 2 {
@@ -168,9 +170,30 @@ func TestRuntimeBaseURLsFallbackGitHub(t *testing.T) {
 	if got[0] != RuntimeBaseURL {
 		t.Fatalf("primary = %s", got[0])
 	}
-	wantGH := "https://github.com/nobu121/dsh-go/releases/download/v" + currentVersion()
-	if got[1] != wantGH {
-		t.Fatalf("fallback = %s, want %s", got[1], wantGH)
+	if !strings.Contains(got[1], "github.com") || !strings.HasSuffix(got[1], "/"+runtimeReleaseTag(shellVersion())) {
+		t.Fatalf("fallback = %s", got[1])
+	}
+}
+
+// The runtime channel must not be version-scoped; that coupling is what forced
+// a shell release for every upstream dsh bump.
+func TestRuntimeBaseURLsAreVersionIndependent(t *testing.T) {
+	t.Setenv("DSH_RUNTIME_BASE_URL", "")
+	oldBase, oldRepo, oldVer := RuntimeBaseURL, UpdateRepo, Version
+	t.Cleanup(func() {
+		RuntimeBaseURL, UpdateRepo, Version = oldBase, oldRepo, oldVer
+	})
+	RuntimeBaseURL = ""
+	UpdateRepo = "nobu121/dsh-go"
+	Version = "1.2.3"
+	before := runtimeBaseURLs()
+	Version = "4.5.6"
+	after := runtimeBaseURLs()
+	if len(before) != 2 || len(after) != 2 {
+		t.Fatalf("bases = %#v vs %#v", before, after)
+	}
+	if !strings.HasSuffix(before[0], "/v1.2.3") || !strings.HasSuffix(after[0], "/v4.5.6") {
+		t.Fatalf("runtime URLs should follow the client tag: %#v vs %#v", before, after)
 	}
 }
 

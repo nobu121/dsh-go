@@ -105,11 +105,11 @@ func parseVersionParts(v string) (versionParts, bool) {
 	return p, true
 }
 
-func shouldOfferDSHUpdate(installed, pin string) bool {
-	if installed == "" || pin == "" || installed == pin {
+func shouldOfferDSHUpdate(installed, target string) bool {
+	if installed == "" || target == "" || installed == target {
 		return false
 	}
-	return compareDSHVersion(installed, pin) < 0
+	return compareDSHVersion(installed, target) < 0
 }
 
 func dshCapsuleLabel(version string) string {
@@ -148,13 +148,20 @@ func installedDSHVersion(src resolvedDSH) string {
 			return ""
 		}
 		return ver
-	case sourceCache:
+	case sourceCache, sourceBundled:
 		return readRuntimeVersion(src.Path)
 	default:
 		return ""
 	}
 }
 
+// canUpdateDSH covers the bundled runtime too: a newer runtime downloads into
+// the cache, which resolveLaunch prefers over the bundled copy, so the runtime
+// shipped inside the app can move without a new shell build.
 func canUpdateDSH(kind dshSourceKind) bool {
-	return kind == sourcePath || kind == sourceCache
+	switch kind {
+	case sourcePath, sourceCache, sourceBundled:
+		return true
+	}
+	return false
 }

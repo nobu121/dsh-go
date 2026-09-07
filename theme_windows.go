@@ -34,6 +34,13 @@ func applyNativeChrome(win *application.WebviewWindow, dark bool) {
 	}
 	raw := uintptr(hwnd)
 
+	if w32.RefreshImmersiveColorPolicyState != nil {
+		w32.RefreshImmersiveColorPolicyState()
+	}
+	if w32.AllowDarkModeForWindow != nil {
+		w32.AllowDarkModeForWindow(hwnd, true)
+	}
+
 	// Both attribute numbers: pre-20H1 hosts only honor 19.
 	var immersive uint32
 	if dark {
@@ -54,22 +61,21 @@ func applyNativeChrome(win *application.WebviewWindow, dark bool) {
 	}
 	w32.SetWindowCompositionAttribute(hwnd, &data)
 
-	caption := uint32(0x00FFFFFF)
-	text := uint32(0x00111111)
-	border := uint32(0x00FFFFFF)
-	if dark {
-		caption = 0x000F0706
-		text = 0x00EEEEEE
-		border = 0x000F0706
-	}
+	caption, text := windowsCaptionColors(dark)
 	w32.SetTitleBarColour(raw, caption)
 	w32.SetTitleTextColour(raw, text)
-	w32.SetBorderColour(raw, border)
+	w32.SetBorderColour(raw, caption)
 
-	if w32.GetForegroundWindow() == hwnd {
-		w32.SendMessage(hwnd, w32.WM_NCACTIVATE, 0, 0)
+	if w32.FlushMenuThemes != nil {
+		w32.FlushMenuThemes()
+	}
+	active := w32.GetForegroundWindow() == hwnd
+	w32.SendMessage(hwnd, w32.WM_NCACTIVATE, 0, 0)
+	if active {
 		w32.SendMessage(hwnd, w32.WM_NCACTIVATE, 1, 0)
 	}
 	w32.SetWindowPos(hwnd, 0, 0, 0, 0, 0,
 		w32.SWP_NOMOVE|w32.SWP_NOSIZE|w32.SWP_NOZORDER|w32.SWP_NOACTIVATE|w32.SWP_FRAMECHANGED)
+	w32.RedrawWindow(hwnd, nil, 0, w32.RDW_INVALIDATE|w32.RDW_FRAME|w32.RDW_UPDATENOW)
+	w32.InvalidateRect(hwnd, nil, true)
 }

@@ -29,12 +29,13 @@ jobs:
             echo "npm latest matches dsh.version"
           fi
 
+  # Client and runtime ship on the same tag, so a new dsh rebuilds the release.
   release:
     needs: detect
     if: needs.detect.outputs.version != ''
     uses: ./.github/workflows/release.yml
     with:
-      version: ${{ needs.detect.outputs.version }}
+      dsh_version: ${{ needs.detect.outputs.version }}
     secrets: inherit
     permissions:
       contents: write

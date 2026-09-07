@@ -3,10 +3,6 @@ package main
 import (
 	"context"
 	"log"
-	"os/exec"
-	"runtime"
-	"strings"
-	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -15,14 +11,9 @@ import (
 )
 
 const (
-	updateInterval   = 6 * time.Hour
-	manualUpdateEvt  = "dsh-go:manual-update"
-	cnbReleasePrefix = "https://cnb.cool/nobu121/dsh-go/-/releases/download/v"
-)
-
-var (
-	manualUpdateMu  sync.Mutex
-	manualUpdateURL string
+	updateInterval  = 6 * time.Hour
+	dshCheckTimeout = 20 * time.Second
+	manualUpdateEvt = "dsh-go:manual-update"
 )
 
 func setupUpdater(app *application.App) bool {
@@ -31,9 +22,12 @@ func setupUpdater(app *application.App) bool {
 		log.Printf("updater disabled: UpdateRepo is empty")
 		return false
 	}
+	// Shell releases are full releases, so /releases/latest picks them up and
+	// skips the runtime channel, which is published as a prerelease at a fixed
+	// non-version tag. Enabling Prerelease here would walk the raw releases
+	// list, whose newest entry could be that channel tag.
 	gh, err := github.New(github.Config{
 		Repository:    repo,
-		Prerelease:    true,
 		ChecksumAsset: "SHA256SUMS",
 	})
 	if err != nil {
@@ -41,7 +35,7 @@ func setupUpdater(app *application.App) bool {
 		return false
 	}
 	if err := app.Updater.Init(updater.Config{
-		CurrentVersion: currentVersion(),
+		CurrentVersion: shellVersion(),
 		Providers:      []updater.Provider{gh},
 		Window:         updater.WindowNone,
 	}); err != nil {
@@ -51,29 +45,26 @@ func setupUpdater(app *application.App) bool {
 	return true
 }
 
-func runUpdateLoop(ctx context.Context, app *application.App) {
-	check := func() {
+func checkShellUpdate(ctx context.Context, app *application.App) string {
+	if app != nil && app.Updater != nil && UpdateRepo != "" {
 		rel, err := app.Updater.Check(ctx)
 		if err != nil {
 			log.Printf("update check: %v", err)
-			return
-		}
-		if rel == nil {
-			return
-		}
-		if isManualInstallArtifact(rel.Artifact.Filename) {
-			url := releaseAssetURL(rel.Version, rel.Artifact.Filename)
-			setManualUpdateURL(url)
-			log.Printf("update available: %s; open %s", rel.Version, url)
-			app.Event.Emit(manualUpdateEvt, rel.Version)
-			return
-		}
-		log.Printf("update available: %s; downloading", rel.Version)
-		if err := app.Updater.DownloadAndInstall(ctx); err != nil {
-			log.Printf("update download: %v", err)
+		} else if rel != nil {
+			log.Printf("update available: %s", rel.Version)
+			return rel.Version
 		}
 	}
-	check()
+	latest := latestReleaseVersion(ctx)
+	if latest == "" || latest == shellVersion() || !shouldOfferDSHUpdate(shellVersion(), latest) {
+		return ""
+	}
+	log.Printf("update available: %s", latest)
+	return latest
+}
+
+func runUpdateLoop(ctx context.Context, app *application.App) {
+	// First check happens on the prep page before launch (see waitStartupOffer).
 	t := time.NewTicker(updateInterval)
 	defer t.Stop()
 	for {
@@ -81,41 +72,24 @@ func runUpdateLoop(ctx context.Context, app *application.App) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			check()
+			if ver := checkShellUpdate(ctx, app); ver != "" {
+				app.Event.Emit(manualUpdateEvt, ver)
+			}
 		}
 	}
 }
 
-func isManualInstallArtifact(name string) bool {
-	return strings.HasSuffix(strings.ToLower(name), ".dmg")
-}
-
-func releaseAssetURL(version, filename string) string {
-	ver := strings.TrimPrefix(strings.TrimSpace(version), "v")
-	return cnbReleasePrefix + ver + "/" + filename
-}
-
-func setManualUpdateURL(url string) {
-	manualUpdateMu.Lock()
-	manualUpdateURL = url
-	manualUpdateMu.Unlock()
-}
-
-func takeManualUpdateURL() string {
-	manualUpdateMu.Lock()
-	defer manualUpdateMu.Unlock()
-	return manualUpdateURL
-}
-
-func openURL(raw string) error {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", raw)
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", raw)
-	default:
-		cmd = exec.Command("xdg-open", raw)
+// runDSHUpdateLoop re-checks the runtime channel on the same cadence as the
+// shell updater, but through a separate path: a new dsh needs no new shell.
+func runDSHUpdateLoop(ctx context.Context, dsh *DSH, show func(string)) {
+	t := time.NewTicker(updateInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			offerDSHUpdate(ctx, dsh, show)
+		}
 	}
-	return cmd.Start()
 }

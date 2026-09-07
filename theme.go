@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 const (
@@ -20,6 +21,12 @@ const (
 //
 // Emit goes through chrome.webview / webkit messageHandlers directly so it
 // works before window._wails.invoke is wired on remote pages.
+//
+// Windows registers this as a WebView2 document-created script, which runs
+// before the HTML is parsed: documentElement and body are both null, and
+// MutationObserver.observe(null) throws and would kill the whole watcher.
+// So every observe target is guarded and setup retries as the document
+// becomes available.
 var themeWatchJS = `(function(){
   if (window.__dshGoThemeWatch) return;
   window.__dshGoThemeWatch = true;
@@ -52,20 +59,35 @@ var themeWatchJS = `(function(){
     last = dark;
     emit(dark);
   }
-  function bind(el){
-    if (!el || el.__dshGoThemeObs) return;
+  function bind(el, opts, fn){
+    if (!el || el.__dshGoThemeObs) return false;
     el.__dshGoThemeObs = true;
-    new MutationObserver(report).observe(el, {attributes:true, attributeFilter:["data-ds-dark-theme"]});
+    new MutationObserver(fn).observe(el, opts);
+    return true;
   }
-  bind(document.body);
-  new MutationObserver(function(){ bind(document.body); report(); }).observe(document.documentElement, {childList:true, subtree:true});
+  function bindBody(){
+    return bind(document.body, {attributes:true, attributeFilter:["data-ds-dark-theme"]}, report);
+  }
+  function start(){
+    bind(document.documentElement, {childList:true, subtree:true}, function(){
+      bindBody();
+      report();
+    });
+    bindBody();
+    report();
+    return !!document.body;
+  }
+  if (!start()) {
+    document.addEventListener("readystatechange", start);
+    document.addEventListener("DOMContentLoaded", start);
+  }
   try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", report); } catch (e) {}
-  report();
 })();`
 
 var (
 	themeListenerMu sync.Mutex
 	themeListener   func(bool)
+	themeTargetFn   func() *application.WebviewWindow
 	themeEventsOnce sync.Once
 )
 
@@ -73,6 +95,9 @@ func registerThemeEvents(app *application.App) {
 	themeEventsOnce.Do(func() {
 		app.Event.On(themeDarkEvent, func(*application.CustomEvent) { onThemeDetected(true) })
 		app.Event.On(themeLightEvent, func(*application.CustomEvent) { onThemeDetected(false) })
+		app.Event.OnApplicationEvent(events.Common.ThemeChanged, func(*application.ApplicationEvent) {
+			syncChromeFromSettings()
+		})
 	})
 }
 
@@ -80,6 +105,22 @@ func setThemeListener(fn func(bool)) {
 	themeListenerMu.Lock()
 	themeListener = fn
 	themeListenerMu.Unlock()
+}
+
+func setThemeTarget(fn func() *application.WebviewWindow) {
+	themeListenerMu.Lock()
+	themeTargetFn = fn
+	themeListenerMu.Unlock()
+}
+
+func themeTarget() *application.WebviewWindow {
+	themeListenerMu.Lock()
+	fn := themeTargetFn
+	themeListenerMu.Unlock()
+	if fn == nil {
+		return nil
+	}
+	return fn()
 }
 
 func onThemeDetected(dark bool) {
@@ -147,6 +188,23 @@ func lockedThemePreference() string {
 	}
 }
 
+func currentThemeDark() bool {
+	switch lockedThemePreference() {
+	case "dark":
+		return true
+	case "light":
+		return false
+	default:
+		return systemDark()
+	}
+}
+
+func syncChromeFromSettings() {
+	dark := currentThemeDark()
+	rememberTheme(dark)
+	applyChrome(themeTarget(), dark)
+}
+
 func knownThemeDark() bool {
 	themeMu.Lock()
 	defer themeMu.Unlock()
@@ -170,14 +228,6 @@ func rememberTheme(dark bool) {
 	themeDark = dark
 	themeKnown = true
 	themeMu.Unlock()
-}
-
-func themeChanged(dark bool) bool {
-	themeMu.Lock()
-	same := themeKnown && themeDark == dark
-	themeMu.Unlock()
-	rememberTheme(dark)
-	return !same
 }
 
 func themeBackground(dark bool) application.RGBA {
@@ -206,6 +256,31 @@ func windowsTheme() application.Theme {
 		return application.Light
 	default:
 		return application.SystemDefault
+	}
+}
+
+func windowsCaptionColors(dark bool) (caption, text uint32) {
+	if dark {
+		return 0x000F0706, 0x00EEEEEE
+	}
+	return 0x00FFFFFF, 0x00111111
+}
+
+func windowsBarTheme(dark bool) *application.WindowTheme {
+	caption, text := windowsCaptionColors(dark)
+	return &application.WindowTheme{
+		TitleBarColour:  &caption,
+		TitleTextColour: &text,
+		BorderColour:    &caption,
+	}
+}
+
+func windowsCustomTheme() application.ThemeSettings {
+	return application.ThemeSettings{
+		DarkModeActive:    windowsBarTheme(true),
+		DarkModeInactive:  windowsBarTheme(true),
+		LightModeActive:   windowsBarTheme(false),
+		LightModeInactive: windowsBarTheme(false),
 	}
 }
 

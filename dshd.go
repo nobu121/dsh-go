@@ -80,18 +80,42 @@ type DSHConfig struct {
 	Command []string
 	Home    string
 	OnPrep  PrepReporter
+	// AfterResolve runs once the launch command is known, before the first
+	// process start. The shell uses it to check for updates on the prep page.
+	AfterResolve func(context.Context, *DSH)
 }
 
 func defaultHomeDir() string {
-	base := os.Getenv("DSH_HOME")
-	if base != "" {
-		return base
+	if base := strings.TrimSpace(os.Getenv("DSH_HOME")); base != "" {
+		return expandHomePath(base)
 	}
-	cfg, err := os.UserConfigDir()
-	if err != nil {
-		return filepath.Join(os.TempDir(), "dsh-go", "dsh-home")
+	return defaultDshHome()
+}
+
+func defaultDshHome() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return filepath.Join(dshGoDir(), "dsh-home")
 	}
-	return filepath.Join(cfg, "dsh-go", "dsh-home")
+	return filepath.Join(home, ".dsh")
+}
+
+func expandHomePath(path string) string {
+	if path == "~" {
+		home, err := os.UserHomeDir()
+		if err != nil || home == "" {
+			return path
+		}
+		return home
+	}
+	if strings.HasPrefix(path, "~/") || strings.HasPrefix(path, `~\`) {
+		home, err := os.UserHomeDir()
+		if err != nil || home == "" {
+			return path
+		}
+		return filepath.Join(home, path[2:])
+	}
+	return path
 }
 
 func webFlags() []string {
@@ -125,13 +149,18 @@ func runtimeRoots() []string {
 	return roots
 }
 
-func bundledNodeCommand() ([]string, error) {
+func bundledRuntime() (string, []string, error) {
 	for _, root := range runtimeRoots() {
 		if runtimeLooksValid(root) {
-			return runtimeNodeCommand(root), nil
+			return root, runtimeNodeCommand(root), nil
 		}
 	}
-	return nil, errors.New("no bundled node + @deepseek-ai/dsh runtime")
+	return "", nil, errors.New("no bundled node + @deepseek-ai/dsh runtime")
+}
+
+func bundledNodeCommand() ([]string, error) {
+	_, argv, err := bundledRuntime()
+	return argv, err
 }
 
 func resolveLaunch(c DSHConfig) (resolvedDSH, error) {
@@ -148,7 +177,7 @@ func resolveLaunch(c DSHConfig) (resolvedDSH, error) {
 			Path: exe,
 		}, nil
 	}
-	if exe, err := lookNamed("dsh"); err == nil && exe != "" {
+	if exe, err := lookNamed("dsh"); err == nil && exe != "" && !isDSHGoShim(exe) {
 		if _, err := os.Stat(exe); err == nil {
 			return resolvedDSH{
 				Argv: append([]string{exe}, webFlags()...),
@@ -160,8 +189,8 @@ func resolveLaunch(c DSHConfig) (resolvedDSH, error) {
 	if argv, ok := cacheRuntimeCommand(); ok {
 		return resolvedDSH{Argv: argv, Kind: sourceCache, Path: runtimeCacheDir()}, nil
 	}
-	if bundled, err := bundledNodeCommand(); err == nil {
-		return resolvedDSH{Argv: bundled, Kind: sourceBundled}, nil
+	if root, argv, err := bundledRuntime(); err == nil {
+		return resolvedDSH{Argv: argv, Kind: sourceBundled, Path: root}, nil
 	}
 	return resolvedDSH{}, errNoDSH
 }
@@ -184,7 +213,7 @@ func resolveDevFallback() (resolvedDSH, bool) {
 			Path: repo,
 		}, true
 	}
-	if argv, ok := hotNpxArgv(currentVersion()); ok {
+	if argv, ok := hotNpxArgv(bundledDSHVersion()); ok {
 		return resolvedDSH{Argv: argv, Kind: sourceNpx}, true
 	}
 	return resolvedDSH{}, false
@@ -257,7 +286,7 @@ func (c DSHConfig) resolve() (resolvedDSH, error) {
 }
 
 func (d *DSH) ensureCommand(ctx context.Context) ([]string, error) {
-	d.report(PrepProgress{Stage: "detect", Message: "正在检测本机 dsh…"})
+	d.report(initialPrepProgress(d.config))
 	r, err := resolveLaunch(d.config)
 	if err == nil {
 		d.setSource(r)
@@ -330,6 +359,16 @@ func NewDSH(cfg DSHConfig, onReady func(url string)) *DSH {
 // Start launches dsh and blocks supervising it until Close is called or the
 // retry budget is exhausted.
 func (d *DSH) Start(ctx context.Context) error {
+	if _, err := d.ensureCommand(ctx); err != nil {
+		d.report(PrepProgress{Stage: "error", Message: err.Error()})
+		return err
+	}
+	if d.config.AfterResolve != nil {
+		d.config.AfterResolve(ctx, d)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	for attempt := 0; ; attempt++ {
 		ready, err := d.launchOnce(ctx)
 		if err != nil {
@@ -357,9 +396,9 @@ func (d *DSH) launchOnce(ctx context.Context) (bool, error) {
 		d.report(PrepProgress{Stage: "error", Message: err.Error()})
 		return false, err
 	}
-	d.report(PrepProgress{Stage: "start", Message: "正在启动 DeepSeek Harness…"})
+	d.report(prepStartProgress())
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
-	cmd.Env = append(os.Environ(), "DSH_HOME="+d.config.Home)
+	cmd.Env = launchEnv(d.config.Home, d.Source())
 	applyProcAttr(cmd)
 
 	pr, pw := io.Pipe()

@@ -80,6 +80,21 @@ func TestWindowsThemeFollowsLock(t *testing.T) {
 	}
 }
 
+func TestCurrentThemeDarkFollowsLock(t *testing.T) {
+	writeThemePreference(t, "light")
+	if currentThemeDark() {
+		t.Fatal("locked light")
+	}
+	writeThemePreference(t, "dark")
+	if !currentThemeDark() {
+		t.Fatal("locked dark")
+	}
+	writeThemePreference(t, "system")
+	if currentThemeDark() != systemDark() {
+		t.Fatal("system should follow the OS")
+	}
+}
+
 func TestKnownThemeFollowsLockOrSystem(t *testing.T) {
 	resetThemeState(t)
 	writeThemePreference(t, "light")
@@ -100,8 +115,11 @@ func TestPrepPageShowsInitAndFollowsSystem(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := string(b)
+	if !strings.Contains(page, "正在启动 DeepSeek Harness…") {
+		t.Fatal("prep page must show start copy when a runtime is already available")
+	}
 	if !strings.Contains(page, "正在初始化") {
-		t.Fatal("prep page must show 正在初始化 when progress is unknown")
+		t.Fatal("prep page must fall back to 正在初始化 when progress is unknown")
 	}
 	if !strings.Contains(page, `data-theme="system"`) {
 		t.Fatal("prep page must default to system theme")
@@ -123,6 +141,30 @@ func TestThemeWatchJSSkipsNullBody(t *testing.T) {
 	}
 	if strings.Contains(themeWatchJS, `setInterval`) || strings.Contains(themeWatchJS, `setTimeout`) {
 		t.Fatal("theme watch must be event-driven, not polled")
+	}
+	host, err := os.ReadFile("theme.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(host), "NewTicker") || strings.Contains(string(host), "time.Tick") {
+		t.Fatal("host must not poll theme settings")
+	}
+}
+
+// Windows runs Options.JS as a document-created script, before the HTML is
+// parsed. observe(null) there throws and silently kills the watcher, so the
+// title bar never hears about a theme change.
+func TestThemeWatchJSSurvivesEmptyDocument(t *testing.T) {
+	if strings.Contains(themeWatchJS, `.observe(document.documentElement`) {
+		t.Fatal("must not observe documentElement unguarded; it is null in a document-created script")
+	}
+	if !strings.Contains(themeWatchJS, `if (!el || el.__dshGoThemeObs) return false`) {
+		t.Fatal("observe targets must be nil-guarded")
+	}
+	for _, retry := range []string{"readystatechange", "DOMContentLoaded"} {
+		if !strings.Contains(themeWatchJS, retry) {
+			t.Fatalf("setup must retry on %s once the document exists", retry)
+		}
 	}
 }
 

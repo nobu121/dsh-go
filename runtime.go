@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -47,6 +48,18 @@ func runtimeBaseURL() string {
 }
 
 func runtimeBaseURLs() []string {
+	return runtimeBaseURLsFor(shellVersion())
+}
+
+func runtimeReleaseTag(version string) string {
+	v := strings.TrimSpace(version)
+	if v == "" {
+		v = shellVersion()
+	}
+	return "v" + strings.TrimPrefix(v, "v")
+}
+
+func runtimeBaseURLsFor(version string) []string {
 	if u := strings.TrimSpace(os.Getenv("DSH_RUNTIME_BASE_URL")); u != "" {
 		return []string{strings.TrimRight(u, "/")}
 	}
@@ -61,9 +74,9 @@ func runtimeBaseURLs() []string {
 		out = append(out, u)
 	}
 	add(RuntimeBaseURL)
-	if repo := strings.TrimSpace(UpdateRepo); repo != "" {
-		add("https://github.com/" + repo + "/releases/download/v" + currentVersion())
-	}
+	tag := runtimeReleaseTag(version)
+	add(cnbReleaseBase(tag))
+	add(githubReleaseBase(tag))
 	return out
 }
 
@@ -71,11 +84,7 @@ func runtimeCacheDir() string {
 	if d := strings.TrimSpace(os.Getenv("DSH_RUNTIME_DIR")); d != "" {
 		return d
 	}
-	cfg, err := os.UserConfigDir()
-	if err != nil {
-		return filepath.Join(os.TempDir(), "dsh-go", runtimeDirName)
-	}
-	return filepath.Join(cfg, "dsh-go", runtimeDirName)
+	return filepath.Join(dshGoDir(), runtimeDirName)
 }
 
 func runtimeOSArch() (string, string) {
@@ -110,20 +119,39 @@ func runtimeLooksValid(root string) bool {
 	return true
 }
 
+// readRuntimeVersion prefers the VERSION stamp written at publish time and
+// falls back to the installed package, so a runtime is always self-describing
+// and never has to match a version baked into the shell.
 func readRuntimeVersion(root string) string {
-	b, err := os.ReadFile(filepath.Join(root, "VERSION"))
+	if b, err := os.ReadFile(filepath.Join(root, "VERSION")); err == nil {
+		if v := strings.TrimSpace(string(b)); v != "" {
+			return v
+		}
+	}
+	return readPackageVersion(filepath.Join(root, "node_modules", "@deepseek-ai", "dsh", "package.json"))
+}
+
+func readPackageVersion(path string) string {
+	b, err := os.ReadFile(path)
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(string(b))
+	var pkg struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(b, &pkg); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(pkg.Version)
 }
 
+// cacheRuntimeCommand accepts any structurally valid cache regardless of
+// version. Upgrades are offered separately (see offerDSHUpdate), so a shell
+// update never invalidates a working runtime and an offline launch never
+// stalls on a version mismatch.
 func cacheRuntimeCommand() ([]string, bool) {
 	root := runtimeCacheDir()
 	if !runtimeLooksValid(root) {
-		return nil, false
-	}
-	if readRuntimeVersion(root) != currentVersion() {
 		return nil, false
 	}
 	return runtimeNodeCommand(root), true
@@ -134,7 +162,11 @@ func runtimeNodeCommand(root string) []string {
 }
 
 func fetchCachedRuntime(ctx context.Context, onPrep PrepReporter) error {
-	bases := runtimeBaseURLs()
+	return fetchCachedRuntimeVersion(ctx, onPrep, shellVersion())
+}
+
+func fetchCachedRuntimeVersion(ctx context.Context, onPrep PrepReporter, version string) error {
+	bases := orderBySpeed(ctx, runtimeBaseURLsFor(version), runtimeChannelFile)
 	if len(bases) == 0 {
 		return errors.New("DSH_RUNTIME_BASE_URL is empty")
 	}
@@ -176,7 +208,6 @@ func throttlePrep(fn PrepReporter, minInterval time.Duration) PrepReporter {
 }
 
 func fetchCachedRuntimeFrom(ctx context.Context, onPrep PrepReporter, base string) error {
-	pin := currentVersion()
 	asset := runtimeAssetName()
 	zipURL := base + "/" + asset
 	dest := runtimeCacheDir()
@@ -243,16 +274,6 @@ func fetchCachedRuntimeFrom(ctx context.Context, onPrep PrepReporter, base strin
 		_ = os.RemoveAll(tmpDir)
 		return errors.New("downloaded runtime is missing node or @deepseek-ai/dsh")
 	}
-	if ver := readRuntimeVersion(tmpDir); ver != "" && ver != pin {
-		_ = os.RemoveAll(tmpDir)
-		return fmt.Errorf("downloaded runtime VERSION %s != pin %s", ver, pin)
-	}
-	if ver := readRuntimeVersion(tmpDir); ver == "" {
-		if err := os.WriteFile(filepath.Join(tmpDir, "VERSION"), []byte(pin+"\n"), 0o644); err != nil {
-			_ = os.RemoveAll(tmpDir)
-			return err
-		}
-	}
 	_ = os.RemoveAll(dest)
 	if err := os.Rename(tmpDir, dest); err != nil {
 		_ = os.RemoveAll(tmpDir)
@@ -299,6 +320,7 @@ func openRemote(ctx context.Context, raw string) (io.ReadCloser, int64, error) {
 	if err != nil {
 		return nil, 0, err
 	}
+	applyDownloadUA(req)
 	resp, err := runtimeHTTPClient.Do(req)
 	if err != nil {
 		return nil, 0, err

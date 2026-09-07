@@ -1,22 +1,51 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"strings"
+	"testing"
+)
 
-func TestCurrentVersionFallsBackToPin(t *testing.T) {
+func mustReadFile(t *testing.T, path string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+func TestShellVersionFallsBackToAppVersion(t *testing.T) {
 	prev := Version
 	t.Cleanup(func() { Version = prev })
 	Version = ""
-	if got := currentVersion(); got != "0.1.2-rc.1" {
-		t.Fatalf("currentVersion() = %q, want pin", got)
+	want := strings.TrimSpace(string(mustReadFile(t, "app.version")))
+	if got := shellVersion(); got != want {
+		t.Fatalf("shellVersion() = %q, want app.version %q", got, want)
 	}
-	Version = " 0.1.3-rc.1 "
-	if got := currentVersion(); got != "0.1.3-rc.1" {
-		t.Fatalf("currentVersion() = %q, want ldflags override", got)
+	Version = " 9.9.9 "
+	if got := shellVersion(); got != "9.9.9" {
+		t.Fatalf("shellVersion() = %q, want ldflags override", got)
+	}
+}
+
+// The shell version and the vendored dsh version are separate numbers; letting
+// them drift is the whole point of the runtime channel.
+func TestShellVersionIndependentOfBundledDSH(t *testing.T) {
+	prev := Version
+	t.Cleanup(func() { Version = prev })
+	Version = "9.9.9"
+	if shellVersion() == bundledDSHVersion() {
+		t.Fatal("shell version must not track the bundled dsh pin")
+	}
+	want := strings.TrimSpace(string(mustReadFile(t, "dsh.version")))
+	if got := bundledDSHVersion(); got != want {
+		t.Fatalf("bundledDSHVersion() = %q, want dsh.version %q", got, want)
 	}
 }
 
 func TestCapsuleLabelText(t *testing.T) {
-	if got := capsuleLabelText("0.1.2-rc.1"); got != "更新到 0.1.2-rc.1" {
+	if got := capsuleLabelText("0.1.2-rc.1"); got != "更新客户端到 0.1.2-rc.1" {
 		t.Fatalf("label = %q", got)
 	}
 }
@@ -65,8 +94,8 @@ func TestGlobalUpgradeArgs(t *testing.T) {
 }
 
 func TestCanUpdateDSH(t *testing.T) {
-	if !canUpdateDSH(sourcePath) || !canUpdateDSH(sourceCache) {
-		t.Fatal("path and cache should be updatable")
+	if !canUpdateDSH(sourcePath) || !canUpdateDSH(sourceCache) || !canUpdateDSH(sourceBundled) {
+		t.Fatal("path, cache and bundled should be updatable")
 	}
 	if canUpdateDSH(sourceNpx) || canUpdateDSH(sourceRepo) {
 		t.Fatal("npx/repo must not get a fake upgrade")

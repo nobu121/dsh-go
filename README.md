@@ -11,40 +11,31 @@ The shell owns three jobs:
 2. Open dsh's own Web UI at the authenticated startup URL.
 3. Exit cleanly, taking the process tree with it.
 
-The installable app is **shell-only**. Node and `@deepseek-ai/dsh` are not
-inside the default package. At startup the shell:
-
-1. Uses `DSH_EXE` if set.
-2. Uses a `dsh` already on `PATH` (for example `npm i -g @deepseek-ai/dsh`).
-3. Uses a previously downloaded runtime in
-   `<UserConfigDir>/dsh-go/dsh-runtime` when its `VERSION` matches
-   [`dsh.version`](dsh.version).
-4. Otherwise downloads `dsh-runtime-<os>-<arch>.zip` from
-   `DSH_RUNTIME_BASE_URL` (or the release-time `RuntimeBaseURL`).
-5. Falls back to `DSH_REPO` or a **warm** `npx` cache. Cold `npx` is not
-   the default, so a first launch does not stall on an empty npm cache.
-
-Developers who already installed dsh get a native window over that CLI.
-Everyone else gets a prep page while the runtime zip is fetched.
-
-If the running dsh is a global install (or the cached runtime) older than
-`dsh.version`, a title-bar capsule (`更新 dsh 到 x.y.z`) can upgrade it:
-`npm i -g` for PATH installs, or a fresh zip for the cache. A warm-npx
-session does not get a fake upgrade button. The shell's own updater
-capsule (`更新到 x.y.z`) is separate.
-
 Supported release targets: **macOS** and **Windows**.
 
-## Layout
+## Runtime
 
-```
-*.go, *.html     shell, supervisor, prep page, updater capsule
-dsh.version      product / target @deepseek-ai/dsh pin
-scripts/         sync / smoke / dist / runtime-zip helpers
-build/darwin/    Info.plist + icons for the .app
-build/windows/   exe resources (icon, manifest, version info)
-.github/         detect npm latest + GitHub Actions package/release (mirrors to CNB)
-```
+The installable app is **shell-only** — Node and `@deepseek-ai/dsh` are not
+in the package. On launch the shell uses whatever dsh it can find (an
+existing global install, or a runtime it downloaded earlier) and otherwise
+fetches a runtime while showing a prep page. Developers who already have
+dsh installed just get a native window over their own CLI.
+
+A downloaded runtime has no `dsh` binary of its own, so the shell installs
+a `dsh` shim and registers it for new terminals. Plugins that shell out to
+`dsh` work in both cases.
+
+`DSH_HOME` defaults to `~/.dsh`, the same location `npm i -g @deepseek-ai/dsh`
+uses, so the app and the terminal share one set of profiles and plugins.
+
+## Updates
+
+On launch the prep page checks for a newer client release. One **立即更新**
+installs the client and the matching runtime from that same GitHub / CNB
+tag, after a speed test picks the faster host.
+
+`稍后` continues with the version already on disk. Startup never rejects a
+working runtime over its version, so an offline launch still works.
 
 ## Development
 
@@ -55,42 +46,25 @@ go build -mod=mod -o dsh-go .
 ./dsh-go
 ```
 
-`vendor/dsh` is a local compatibility runtime (same layout as the cache).
-`DSH_HOME` defaults to `<UserConfigDir>/dsh-go/dsh-home`. Point
-`DSH_RUNTIME_BASE_URL` at a directory of runtime zips to exercise the
-download path (`file:///…` works).
+`DSH_EXE` points the shell at a specific `dsh`, `DSH_REPO` at a dsh checkout,
+and `DSH_RUNTIME_BASE_URL` at a directory of runtime assets (`file:///…`
+works) to exercise the download path.
 
 ## Package
 
 ```sh
-wails3 task package:dist              # macOS DMG or Windows exe
+wails3 task package:dist      # macOS DMG or Windows exe
 bash scripts/sync-dsh.sh
-wails3 task package:runtime           # dsh-runtime-<os>-<arch>.zip
+wails3 task package:runtime   # runtime assets for the channel
 ```
 
-macOS writes `bin/dsh-go.app` and a people-facing `bin/dsh-go-darwin-<arch>.dmg`.
-Windows writes a UPX-compressed `bin/dsh-go-windows-<arch>.exe`. Neither
-artifact includes `dsh-runtime`. To skip the macOS Gatekeeper prompt, add
-Apple Developer ID + notary secrets (`MACOS_CERTIFICATE_P12`,
-`MACOS_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_TEAM_ID`,
-`APPLE_APP_SPECIFIC_PASSWORD`) so Release can sign and notarize the DMG.
+Neither app artifact includes a runtime. Add Apple Developer ID + notary
+secrets to have CI sign and notarize the DMG and skip the macOS Gatekeeper
+prompt.
 
-People-facing packages and updater / runtime assets are published on
-**GitHub Releases** and mirrored to **CNB Releases**
-(`https://cnb.cool/nobu121/dsh-go/-/releases`). Daily development remote
-stays on CNB (`origin`).
-
-Release builds set `-X main.UpdateRepo=$GITHUB_REPOSITORY` and
-`-X main.RuntimeBaseURL=https://cnb.cool/nobu121/dsh-go/-/releases/download/v<ver>`
-(GitHub is the download fallback). Local builds leave both empty: the
-app updater is skipped, and runtime download needs `DSH_RUNTIME_BASE_URL`.
-
-## Upstream pin
-
-[`dsh.version`](dsh.version) is the product version and the target dsh
-version for downloads and assisted upgrades. CI follows npm's `latest`
-dist-tag for `@deepseek-ai/dsh` (currently an rc; later a stable
-`x.y.z` when they publish one). The `alpha` tag is ignored.
+Packages and runtime assets are published on **GitHub Releases** and
+mirrored to **CNB Releases** (`https://cnb.cool/nobu121/dsh-go/-/releases`).
+Daily development remote stays on CNB (`origin`).
 
 ## License
 
