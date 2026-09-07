@@ -27,10 +27,24 @@ keep="${keep_os}-${keep_arch}"
 
 before="$(du -sk "$DEST" | awk '{print $1}')"
 
-if [[ -x "$DEST/node" ]] && command -v strip >/dev/null; then
-  strip -S "$DEST/node" || true
-  if [[ "$keep_os" == "darwin" ]] && command -v codesign >/dev/null; then
-    codesign --force --sign - "$DEST/node" >/dev/null
+node_bin=""
+if [[ -x "$DEST/node" ]]; then
+  node_bin="$DEST/node"
+elif [[ -f "$DEST/node.exe" ]]; then
+  node_bin="$DEST/node.exe"
+fi
+# Keep the official Node signature on macOS. strip/UPX would break it and
+# force an ad-hoc re-sign; Windows has no equivalent gate.
+if [[ -n "$node_bin" && "$keep_os" != "darwin" ]]; then
+  if [[ "$keep_os" != "win32" ]] && command -v strip >/dev/null; then
+    strip -S "$node_bin" || true
+  fi
+  if command -v upx >/dev/null; then
+    if ! upx -t "$node_bin" >/dev/null 2>&1; then
+      upx --best --lzma "$node_bin" || echo "prune-dsh: upx failed on $node_bin; leaving uncompressed" >&2
+    fi
+  else
+    echo "prune-dsh: upx not on PATH; leaving node uncompressed" >&2
   fi
 fi
 
@@ -76,8 +90,52 @@ PY
 
   rm -rf "$NM/@types"
 
+  # Published packages often ship test trees, yarn metadata, and examples.
+  # None of these are imported by the web profile at runtime.
+  find "$NM" \( \
+    -name test -o -name tests -o -name __tests__ -o -name spec -o \
+    -name fixtures -o -name examples -o -name .yarn -o -name .github \
+  \) -type d -prune -exec rm -rf {} +
+
+  # Native addon sources are unused once that package already has a .node.
+  python3 - "$NM" <<'PY'
+import os, sys
+root = sys.argv[1]
+src_ext = (".cc", ".cpp", ".c", ".h", ".hh", ".gyp")
+
+def package_root(start):
+    cur = start
+    while True:
+        if os.path.isfile(os.path.join(cur, "package.json")):
+            return cur
+        parent = os.path.dirname(cur)
+        if parent == cur or len(parent) < len(root):
+            return None
+        cur = parent
+
+pkgs = set()
+for dp, dns, fns in os.walk(root):
+    if any(fn.endswith(".node") for fn in fns):
+        pkg = package_root(dp)
+        if pkg:
+            pkgs.add(pkg)
+for pkg in pkgs:
+    for dp, dns, fns in os.walk(pkg):
+        rel = os.path.relpath(dp, pkg)
+        if rel != "." and "node_modules" in rel.split(os.sep):
+            continue
+        for fn in fns:
+            if fn.lower().endswith(src_ext):
+                try:
+                    os.remove(os.path.join(dp, fn))
+                except OSError:
+                    pass
+PY
+
   if [[ -d "$NM/node-pty/prebuilds" ]]; then
     find "$NM/node-pty/prebuilds" -mindepth 1 -maxdepth 1 ! -name "$keep" -exec rm -rf {} +
+    # prebuilds already have the OpenConsole this host needs.
+    rm -rf "$NM/node-pty/build" "$NM/node-pty/third_party" "$NM/node-pty/src" "$NM/node-pty/scripts"
   fi
 
   if [[ -d "$NM/@img/sharp-${keep_os}-${keep_arch}" || -d "$NM/@img/sharp-libvips-${keep_os}-${keep_arch}" ]]; then

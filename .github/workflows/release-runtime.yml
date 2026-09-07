@@ -44,6 +44,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
+      - name: Install UPX
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install upx -y --no-progress
       - name: Resolve dsh version
         shell: bash
         run: |
