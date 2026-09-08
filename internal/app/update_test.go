@@ -120,6 +120,68 @@ func TestDesktopUpdateScriptDeletesItselfQuietly(t *testing.T) {
 	}
 }
 
+func TestAppBundlePath(t *testing.T) {
+	exe := filepath.Join(string(filepath.Separator)+"Applications", "Foo.app", "Contents", "MacOS", "dsh-go")
+	want := filepath.Join(string(filepath.Separator)+"Applications", "Foo.app")
+	if got := appBundlePath(exe); got != want {
+		t.Fatalf("bundle = %q, want %q", got, want)
+	}
+	if appBundlePath(filepath.Join(string(filepath.Separator)+"tmp", "dsh-go")) != "" {
+		t.Fatal("bare binary should not look like a bundle")
+	}
+	dev := filepath.Join(string(filepath.Separator)+"tmp", "bin", "dsh-go.dev.app", "Contents", "MacOS", "dsh-go")
+	if appBundlePath(dev) != "" {
+		t.Fatal("dev bundle must not be replaced")
+	}
+	if appBundlePath("") != "" {
+		t.Fatal("empty exe")
+	}
+}
+
+func TestFindAppInDir(t *testing.T) {
+	dir := t.TempDir()
+	app := filepath.Join(dir, "Deepseek Harness GO.app")
+	if err := os.Mkdir(app, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("/Applications", filepath.Join(dir, "Applications")); err != nil {
+		t.Logf("skip Applications symlink: %v", err)
+	}
+	got, err := findAppInDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != app {
+		t.Fatalf("got %q, want %q", got, app)
+	}
+	empty := t.TempDir()
+	if _, err := findAppInDir(empty); err == nil {
+		t.Fatal("expected error for dir without .app")
+	}
+	onlyLink := t.TempDir()
+	if err := os.Symlink(app, filepath.Join(onlyLink, "Fake.app")); err != nil {
+		t.Logf("skip Fake.app symlink: %v", err)
+	} else if _, err := findAppInDir(onlyLink); err == nil {
+		t.Fatal("symlink .app should be skipped")
+	}
+}
+
+func TestDarwinUpdateScript(t *testing.T) {
+	s := darwinUpdateScript()
+	for _, want := range []string{
+		"kill -0",
+		"ditto \"$SRC\" \"$DEST\"",
+		`mv "$BAK" "$DEST"`,
+		`open "$DEST"`,
+		`rm -f -- "$0"`,
+		"com.apple.quarantine",
+	} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("script missing %q", want)
+		}
+	}
+}
+
 func TestMirrorName(t *testing.T) {
 	if got := mirrorName("https://cnb.cool/nobu121/dsh-go/-/releases/download/v1"); got != "CNB" {
 		t.Fatalf("cnb = %s", got)

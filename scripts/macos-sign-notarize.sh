@@ -70,4 +70,9 @@ if [[ -n "$DMG" && -f "$DMG" ]]; then
     --wait
   xcrun stapler staple "$DMG"
   xcrun stapler validate "$DMG"
+  if xcrun stapler staple "$APP"; then
+    xcrun stapler validate "$APP" || true
+  else
+    echo "macos-sign-notarize: could not staple .app; dmg staple is enough for first install" >&2
+  fi
 fi

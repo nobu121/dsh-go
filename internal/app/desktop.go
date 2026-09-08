@@ -226,3 +226,86 @@ func unpackDesktopExe(zipPath string) (string, error) {
 	}
 	return tmpName, nil
 }
+
+// appBundlePath walks up from a binary path and returns the enclosing .app
+// bundle. Dev bundles (*.dev.app) and bare binaries return "".
+func appBundlePath(exe string) string {
+	if exe == "" {
+		return ""
+	}
+	p := filepath.Clean(exe)
+	for p != "" && filepath.Dir(p) != p {
+		base := filepath.Base(p)
+		lower := strings.ToLower(base)
+		if strings.HasSuffix(lower, ".app") {
+			if strings.HasSuffix(lower, ".dev.app") {
+				return ""
+			}
+			return p
+		}
+		p = filepath.Dir(p)
+	}
+	return ""
+}
+
+// findAppInDir returns the first real .app directory in dir, skipping
+// symlinks (the Applications shortcut on a release DMG).
+func findAppInDir(dir string) (string, error) {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return "", err
+	}
+	for _, e := range ents {
+		name := e.Name()
+		if !strings.HasSuffix(strings.ToLower(name), ".app") {
+			continue
+		}
+		if e.Type()&os.ModeSymlink != 0 || !e.IsDir() {
+			continue
+		}
+		return filepath.Join(dir, name), nil
+	}
+	return "", fmt.Errorf("dmg has no .app: %s", dir)
+}
+
+// darwinUpdateScript waits for the running client to exit, replaces its
+// .app with the extracted bundle, relaunches, then deletes itself.
+func darwinUpdateScript() string {
+	return "" +
+		"#!/bin/bash\n" +
+		"PID=\"$1\"\n" +
+		"DEST=\"$2\"\n" +
+		"SRC=\"$3\"\n" +
+		"BAK=\"${DEST}.updating\"\n" +
+		"for i in $(seq 1 60); do\n" +
+		"  if ! kill -0 \"$PID\" 2>/dev/null; then\n" +
+		"    break\n" +
+		"  fi\n" +
+		"  sleep 0.5\n" +
+		"done\n" +
+		"if kill -0 \"$PID\" 2>/dev/null; then\n" +
+		"  exit 1\n" +
+		"fi\n" +
+		"sleep 0.3\n" +
+		"rm -rf \"$BAK\"\n" +
+		"moved=0\n" +
+		"for i in $(seq 1 30); do\n" +
+		"  if mv \"$DEST\" \"$BAK\" 2>/dev/null; then\n" +
+		"    moved=1\n" +
+		"    break\n" +
+		"  fi\n" +
+		"  sleep 0.5\n" +
+		"done\n" +
+		"if [ \"$moved\" != 1 ]; then\n" +
+		"  exit 1\n" +
+		"fi\n" +
+		"if ! ditto \"$SRC\" \"$DEST\"; then\n" +
+		"  mv \"$BAK\" \"$DEST\" 2>/dev/null || true\n" +
+		"  exit 1\n" +
+		"fi\n" +
+		"rm -rf \"$BAK\"\n" +
+		"xattr -dr com.apple.quarantine \"$DEST\" 2>/dev/null || true\n" +
+		"open \"$DEST\"\n" +
+		"rm -rf \"$(dirname \"$SRC\")\"\n" +
+		"rm -f -- \"$0\"\n"
+}

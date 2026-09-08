@@ -289,14 +289,15 @@ func applyAllUpdates(ctx context.Context, app *application.App, emit func(PrepPr
 			return
 		}
 		emit(PrepProgress{Stage: "update", Message: currentUI().InstallingClient})
-		if err := installDesktopPackage(path); err != nil {
+		restarts, err := installDesktopPackage(path)
+		if err != nil {
 			log.Printf("client install: %v", err)
 			offer.restoreAppIfPending()
 			emit(PrepProgress{Stage: "error", Message: err.Error()})
 			present()
 			return
 		}
-		if desktopInstallRestarts() {
+		if restarts {
 			if app != nil {
 				app.Quit()
 			}

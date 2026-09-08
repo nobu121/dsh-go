@@ -4,8 +4,6 @@ package app
 
 import "fmt"
 
-func installDesktopPackage(path string) error {
-	return fmt.Errorf("this platform cannot install %s", path)
+func installDesktopPackage(path string) (bool, error) {
+	return false, fmt.Errorf("this platform cannot install %s", path)
 }
-
-func desktopInstallRestarts() bool { return false }

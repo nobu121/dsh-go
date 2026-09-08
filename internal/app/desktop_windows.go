@@ -10,37 +10,35 @@ import (
 	"strings"
 )
 
-func installDesktopPackage(path string) error {
+func installDesktopPackage(path string) (bool, error) {
 	if strings.HasSuffix(strings.ToLower(path), ".dmg") {
-		return fmt.Errorf("this Windows build cannot install a macOS image")
+		return false, fmt.Errorf("this Windows build cannot install a macOS image")
 	}
 	current, err := os.Executable()
 	if err != nil {
-		return err
+		return false, err
 	}
 	current, err = filepath.Abs(current)
 	if err != nil {
-		return err
+		return false, err
 	}
 	src := path
 	if strings.HasSuffix(strings.ToLower(path), ".zip") {
 		extracted, err := unpackDesktopExe(path)
 		if err != nil {
-			return err
+			return false, err
 		}
 		src = extracted
 	}
 	src, err = filepath.Abs(src)
 	if err != nil {
-		return err
+		return false, err
 	}
 	script := filepath.Join(os.TempDir(), "dsh-go-update.cmd")
 	if err := os.WriteFile(script, []byte(desktopUpdateScript(current, src)), 0o644); err != nil {
-		return err
+		return false, err
 	}
 	cmd := exec.Command("cmd", "/C", script)
 	cmd.SysProcAttr = hiddenProcAttr(0)
-	return cmd.Start()
+	return true, cmd.Start()
 }
-
-func desktopInstallRestarts() bool { return true }
