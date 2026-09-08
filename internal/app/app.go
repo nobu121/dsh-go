@@ -45,7 +45,7 @@ func Run(assets embed.FS) {
 	ui := &shellWindows{}
 	var app *application.App
 	app = application.New(application.Options{
-		Name:        "dsh-go",
+		Name:        productDisplayName,
 		Description: "A Wails v3 desktop shell for DeepSeek Harness",
 		Assets: application.AssetOptions{
 			Handler: assetHandler(assets),

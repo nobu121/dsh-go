@@ -2,7 +2,7 @@ version: '3'
 
 info:
   companyName: "nobu121"
-  productName: "dsh-go"
+  productName: "Deepseek Harness GO"
   productIdentifier: "com.dshgo.app"
   description: "A Wails v3 desktop shell for DeepSeek Harness"
   copyright: "© 2026, dsh-go"

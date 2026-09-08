@@ -8,6 +8,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN_DIR="${BIN_DIR:-$ROOT/bin}"
 APP_NAME="${APP_NAME:-dsh-go}"
+APP_DISPLAY_NAME="${APP_DISPLAY_NAME:-Deepseek Harness GO}"
 os="$(uname -s)"
 arch="$(uname -m)"
 case "$arch" in
@@ -34,7 +35,7 @@ if [[ "$os" == "Darwin" ]]; then
 
   dmg_asset="${APP_NAME}-darwin-${goarch}.dmg"
   mkdir -p "$stage/dmg"
-  ditto "$app" "$stage/dmg/${APP_NAME}.app"
+  ditto "$app" "$stage/dmg/${APP_DISPLAY_NAME}.app"
   ln -s /Applications "$stage/dmg/Applications"
   if [[ -z "${MACOS_CERTIFICATE_P12:-}" ]]; then
     printf '%s\n' '若提示“无法打开 / 已损坏”：按住 Control 点图标选“打开”，或到 系统设置 → 隐私与安全性 点“仍要打开”。' \
@@ -42,7 +43,7 @@ if [[ "$os" == "Darwin" ]]; then
   fi
   rm -f "$BIN_DIR/$dmg_asset"
   hdiutil create \
-    -volname "$APP_NAME" \
+    -volname "$APP_DISPLAY_NAME" \
     -srcfolder "$stage/dmg" \
     -ov \
     -format ULMO \
