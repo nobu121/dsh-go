@@ -2,9 +2,16 @@
 
 [English](README.md) | **中文**
 
-[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的桌面客户端。
-支持 **macOS** 和 **Windows**。本程序是非官方应用，与 DeepSeek 无关；应用图标及
-DeepSeek 相关商标均归杭州深度求索人工智能基础技术研究有限公司所有。
+给已经会用 `dsh` 的人一个 **4 MB** 原生窗口。[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的官方界面，配置就是 `~/.dsh`，不另做市场、不另起一套设置。国内走 CNB。
+
+**下载**
+
+- macOS（Apple Silicon）— [`.dmg`](https://github.com/nobu121/dsh-go/releases/latest/download/dsh-go-darwin-arm64.dmg)
+- Windows（x64）— 自安装 [`.zip`](https://github.com/nobu121/dsh-go/releases/latest/download/dsh-go-windows-amd64.zip)
+
+校验和：[GitHub Releases](https://github.com/nobu121/dsh-go/releases/latest) · [CNB](https://cnb.cool/nobu121/dsh-go/-/releases)
+
+非官方应用，与 DeepSeek 无关。应用图标及 DeepSeek 相关商标归杭州深度求索人工智能基础技术研究有限公司所有。
 
 ## 功能
 
@@ -24,8 +31,6 @@ DeepSeek 相关商标均归杭州深度求索人工智能基础技术研究有�
 - 自动注入 `dsh` 命令，插件安装体验和命令行一样。
 - 客户端和运行时分开更新。国内走 CNB，GitHub 不通也不会卡在启动。
 - Windows 会出现在「已安装的应用」里，卸载干净。
-
-安装包在 [GitHub Releases](https://github.com/nobu121/dsh-go/releases)。
 
 ## 许可
 

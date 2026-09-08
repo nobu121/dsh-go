@@ -2,10 +2,16 @@
 
 **English** | [中文](README.zh-CN.md)
 
-A desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
-Available for **macOS** and **Windows**. This is an unofficial app, not affiliated
-with DeepSeek. The app icon and DeepSeek trademarks belong to
-杭州深度求索人工智能基础技术研究有限公司.
+A **4 MB** native window for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Official UI only — no extra marketplace, no second config. Shares `~/.dsh` with the `dsh` CLI.
+
+**Download**
+
+- macOS (Apple Silicon) — [`.dmg`](https://github.com/nobu121/dsh-go/releases/latest/download/dsh-go-darwin-arm64.dmg)
+- Windows (x64) — self-installing [`.zip`](https://github.com/nobu121/dsh-go/releases/latest/download/dsh-go-windows-amd64.zip)
+
+Checksums: [GitHub Releases](https://github.com/nobu121/dsh-go/releases/latest) · [CNB](https://cnb.cool/nobu121/dsh-go/-/releases)
+
+Unofficial. Not affiliated with DeepSeek. The app icon and DeepSeek trademarks belong to 杭州深度求索人工智能基础技术研究有限公司.
 
 ## Features
 
@@ -25,8 +31,6 @@ with DeepSeek. The app icon and DeepSeek trademarks belong to
 - Puts `dsh` on PATH, so plugin install works the same as the CLI.
 - Client and runtime update separately. Mirrors include CNB, so a blocked GitHub does not stall launch.
 - On Windows it appears in Installed apps and uninstalls cleanly.
-
-Installers are on [GitHub Releases](https://github.com/nobu121/dsh-go/releases).
 
 ## License
 
