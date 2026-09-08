@@ -85,7 +85,7 @@ fi
 echo "CNB release ${TAG} id=${rid}"
 
 shopt -s nullglob
-assets=("$DIR"/dsh-go-* "$DIR"/dsh-runtime-* "$DIR"/runtime.json "$DIR"/SHA256SUMS)
+assets=("$DIR"/dsh-go-* "$DIR"/dsh-runtime-* "$DIR"/runtime.json "$DIR"/client.json "$DIR"/SHA256SUMS)
 if [[ ${#assets[@]} -eq 0 ]]; then
   echo "no release assets in $DIR" >&2
   exit 1

@@ -5,9 +5,11 @@ name: Release dsh runtime
 # fixed runtime-latest tag, so no client rebuild is involved and installed
 # clients pick the new runtime up on their next check.
 #
-# The GitHub release is a prerelease on purpose: the client updater reads
-# /releases/latest, which ignores prereleases, so this channel can never be
-# mistaken for a client update.
+# The GitHub release is a prerelease on purpose: prereleases are never picked
+# up as the client's latest release (GitHub's /releases/latest and the CNB
+# "latest" download both skip them), so this channel can never be mistaken for
+# a client update. Client update checks read the separate client-latest
+# channel that release.yml maintains.
 
 on:
   workflow_call:

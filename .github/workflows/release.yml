@@ -135,6 +135,46 @@ jobs:
           fi
           export CNB_NOTES="dsh-go client ${ver}"
           bash scripts/sync-release-to-cnb.sh "v${ver}" dist
+      # The client channel lets installed shells learn about a new client
+      # without querying the GitHub API: release.yml writes client.json onto a
+      # fixed client-latest tag (prerelease, so it never shadows a real client
+      # release) that is mirrored to both GitHub and CNB. The shell races the
+      # two mirrors and uses whichever answers first.
+      - name: Publish client channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          ver="$VERSION"
+          if [ -z "$ver" ]; then
+            ver="$(tr -d '[:space:]' < app.version)"
+          fi
+          mkdir -p channel
+          printf '{\n  "version": "%s",\n  "updated": "%s"\n}\n' "$ver" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > channel/client.json
+          tag=client-latest
+          notes="Rolling client channel. Current: ${ver}. Consumed by dsh-go for update checks; not a client release."
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --prerelease --latest=false --notes "$notes"
+            gh release upload "$tag" channel/client.json --clobber
+          else
+            gh release create "$tag" channel/client.json --title "client channel" --notes "$notes" --prerelease
+          fi
+      - name: Sync client channel to CNB
+        env:
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+          CNB_REPO: nobu121/dsh-go
+          CNB_PRERELEASE: "true"
+          CNB_MAKE_LATEST: "false"
+          VERSION: ${{ inputs.version }}
+        run: |
+          ver="$VERSION"
+          if [ -z "$ver" ]; then
+            ver="$(tr -d '[:space:]' < app.version)"
+          fi
+          mkdir -p channel
+          printf '{\n  "version": "%s",\n  "updated": "%s"\n}\n' "$ver" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > channel/client.json
+          export CNB_NOTES="Rolling client channel. Current: ${ver}."
+          bash scripts/sync-release-to-cnb.sh client-latest channel
       - name: Commit app.version
         if: inputs.version != ''
         run: |

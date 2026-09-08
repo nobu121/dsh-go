@@ -15,12 +15,10 @@ func TestWaitStartupOfferSimulatedBlocksUntilLater(t *testing.T) {
 	go func() {
 		waitStartupOffer(
 			context.Background(),
-			nil,
 			NewDSH(DSHConfig{}, nil),
 			offer,
 			func() { presented <- struct{}{} },
 			func(PrepProgress) {},
-			false,
 		)
 		close(done)
 	}()
@@ -46,12 +44,10 @@ func TestWaitStartupOfferSkipsWhenCurrent(t *testing.T) {
 	offer := newUpdateCapsule()
 	waitStartupOffer(
 		context.Background(),
-		nil,
 		NewDSH(DSHConfig{}, nil),
 		offer,
 		func() { t.Fatal("should not present") },
 		func(PrepProgress) {},
-		false,
 	)
 	if _, _, ok := offer.pending(); ok {
 		t.Fatal("no offer expected")

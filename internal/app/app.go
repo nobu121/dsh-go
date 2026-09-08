@@ -12,7 +12,6 @@ import (
 	"sync/atomic"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"github.com/wailsapp/wails/v3/pkg/updater"
 )
 
 // assetHandler serves the prep page at / and other embedded files (icon, versions)
@@ -74,9 +73,8 @@ func Run(assets embed.FS) {
 	offer := newUpdateCapsule()
 
 	var (
-		dsh          *DSH
-		prep         prepState
-		updaterReady bool
+		dsh  *DSH
+		prep prepState
 	)
 
 	emitPrep := func(p PrepProgress) {
@@ -108,7 +106,7 @@ func Run(assets embed.FS) {
 			app.Event.Emit(prepEvent, p)
 		},
 		AfterResolve: func(ctx context.Context, d *DSH) {
-			waitStartupOffer(ctx, app, d, offer, presentOffer, emitPrep, updaterReady)
+			waitStartupOffer(ctx, d, offer, presentOffer, emitPrep)
 		},
 	}, func(dshURL string) {
 		if _, _, ok := offer.pending(); ok {
@@ -164,26 +162,17 @@ func Run(assets embed.FS) {
 		go runSupervisor()
 	})
 
-	updaterReady = setupUpdater(app)
-	if updaterReady {
-		app.Event.On(updater.EventUpdateReady, func(e *application.CustomEvent) {
-			rel, ok := e.Data.(*updater.Release)
-			if !ok || rel == nil {
-				return
-			}
-			offer.stashApp(rel.Version)
-			if _, _, pending := offer.pending(); pending && !offer.isDSH() {
-				presentOffer()
-			}
-		})
-		app.Event.On(manualUpdateEvt, func(e *application.CustomEvent) {
-			ver, _ := e.Data.(string)
-			if ver == "" {
-				return
-			}
-			offer.stashApp(ver)
-			presentOffer()
-		})
+	// A new release found by the background loop (or anywhere else) is surfaced
+	// through the same prep-page offer as a startup check would have used.
+	app.Event.On(manualUpdateEvt, func(e *application.CustomEvent) {
+		ver, _ := e.Data.(string)
+		if ver == "" {
+			return
+		}
+		offer.stashApp(ver)
+		presentOffer()
+	})
+	if UpdateRepo != "" {
 		go runUpdateLoop(ctx, app)
 	}
 	go runDSHUpdateLoop(ctx, dsh, showDSHUpdate)
@@ -215,12 +204,10 @@ func Run(assets embed.FS) {
 
 func waitStartupOffer(
 	ctx context.Context,
-	app *application.App,
 	dsh *DSH,
 	offer *updateCapsule,
 	present func(),
 	emit func(PrepProgress),
-	updaterReady bool,
 ) {
 	emit(prepStartProgress())
 	simulateUpdates(offer)
@@ -236,10 +223,7 @@ func waitStartupOffer(
 		}()
 		go func() {
 			defer wg.Done()
-			if !updaterReady {
-				return
-			}
-			if ver := checkShellUpdate(checkCtx, app); ver != "" {
+			if ver := checkShellUpdate(checkCtx); ver != "" {
 				offer.stashApp(ver)
 			}
 		}()
