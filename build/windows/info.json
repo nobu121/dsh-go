@@ -1,10 +1,10 @@
 {
 	"fixed": {
-		"file_version": "0.3.3"
+		"file_version": "0.3.4"
 	},
 	"info": {
 		"0000": {
-			"ProductVersion": "0.3.3",
+			"ProductVersion": "0.3.4",
 			"CompanyName": "nobu121",
 			"FileDescription": "A Wails v3 desktop shell for DeepSeek Harness",
 			"LegalCopyright": "© 2026, dsh-go",
