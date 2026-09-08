@@ -1,5 +1,5 @@
 ---
-description: When shipping a client release, write a changelog from the actual changes and put it on the GitHub Release.
+description: When shipping a client release, write a bilingual changelog from the actual changes and put it on the GitHub Release.
 alwaysApply: true
 ---
 
@@ -9,15 +9,20 @@ When the user asks to 发版 / release / ship a client version:
 
 1. Compare this release to the previous **client** tag (`git tag -l 'v*' --sort=-v:refname`, skip `runtime-latest`). Use `git log <prev>..HEAD` and the working-tree / commit diffs as the source of truth.
 2. Draft a short **user-facing** changelog (what users notice), not a file list or commit dump. Group as Added / Changed / Fixed when there are several items. Omit chore-only noise (tidy, icon regen, test-only) unless it changes the product.
-3. Write the notes in the same language the user used for the release request. Mention platforms only when the change is platform-specific (Windows self-update vs macOS DMG).
+3. Always write **both Chinese and English**. Same bullets in each language. Mention platforms only when the change is platform-specific (Windows self-update vs macOS DMG).
 4. Put that text on the **GitHub Release** body for `v<version>`. The workflow currently publishes a generic one-liner; after the release exists, set the real notes with `gh release edit v<version> --repo nobu121/dsh-go --notes-file ...` (or `--notes`). Do not leave the generic "macOS DMG and Windows zip" blurb as the final notes.
-5. Do not invent features that are not in the diff. If the only change is a version bump, say so in one sentence.
+5. Do not invent features that are not in the diff. If the only change is a version bump, say so in one sentence in both languages.
 
 Example shape:
 
 ```
 ## 0.3.2
 
+### 中文
 - 外链在系统默认浏览器打开，不再用 WebView2。
 - 修复 Windows 客户端更新后弹出「找不到批处理文件」控制台。
+
+### English
+- Open external links in the system browser instead of WebView2.
+- Fix the Windows update console that showed "The batch file cannot be found."
 ```
