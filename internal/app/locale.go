@@ -70,6 +70,8 @@ type uiText struct {
 	Runtime          string
 	NPMMissing       string
 	NPMFailed        string
+	DisableRestart   string
+	RecoverFail      string
 }
 
 var (
@@ -87,6 +89,8 @@ var (
 		Runtime:          "运行时",
 		NPMMissing:       "未找到 npm，无法更新全局 dsh",
 		NPMFailed:        "npm i -g 失败: %s",
+		DisableRestart:   "禁用并重启",
+		RecoverFail:      "Harness 插件加载失败",
 	}
 	uiEN = uiText{
 		Downloading:      "Downloading…",
@@ -102,6 +106,8 @@ var (
 		Runtime:          "Runtime",
 		NPMMissing:       "npm was not found; cannot update global dsh",
 		NPMFailed:        "npm i -g failed: %s",
+		DisableRestart:   "Disable and restart",
+		RecoverFail:      "Harness failed to load plugins",
 	}
 )
 

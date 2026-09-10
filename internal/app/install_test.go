@@ -16,6 +16,20 @@ func TestSkipSelfInstallInDev(t *testing.T) {
 	}
 }
 
+func TestExeInSourceTree(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	inBin := filepath.Join(root, "bin", installExeName)
+	if !exeInSourceTree(inBin) {
+		t.Fatal("repo bin")
+	}
+	if exeInSourceTree(filepath.Join(t.TempDir(), installExeName)) {
+		t.Fatal("standalone download")
+	}
+}
+
 func TestWantsUninstall(t *testing.T) {
 	if wantsUninstall([]string{"dsh-go.exe"}) {
 		t.Fatal("plain launch")

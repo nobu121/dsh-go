@@ -6,11 +6,12 @@ const (
 	prepStartMsg = productDisplayName
 )
 
-// PrepOfferItem is one pending update on the shell prep page.
+// PrepOfferItem is one pending update or recoverable plugin on the prep page.
 type PrepOfferItem struct {
-	Kind    string `json:"kind"`
-	Name    string `json:"name"`
-	Version string `json:"version"`
+	Kind     string `json:"kind"`
+	Name     string `json:"name"`
+	Version  string `json:"version"`
+	Selected bool   `json:"selected,omitempty"`
 }
 
 // PrepProgress is emitted to the shell prep page while dsh is being located,
@@ -20,13 +21,15 @@ type PrepProgress struct {
 	Message string          `json:"message"`
 	Action  string          `json:"action,omitempty"`
 	Version string          `json:"version,omitempty"`
+	Detail  string          `json:"detail,omitempty"`
 	Items   []PrepOfferItem `json:"items,omitempty"`
 	Bytes   int64           `json:"bytes"`
 	Total   int64           `json:"total"`
 }
 
 const (
-	prepOfferStage = "offer"
+	prepOfferStage   = "offer"
+	prepRecoverStage = "recover"
 
 	prepEvent      = "dsh-go:prep"
 	prepRetryEvent = "dsh-go:prep-retry"

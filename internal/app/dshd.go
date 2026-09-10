@@ -73,6 +73,7 @@ type DSH struct {
 	config  DSHConfig
 	source  resolvedDSH
 	lastURL string
+	tail    []string
 }
 
 // DSHConfig holds the resolved launch configuration.
@@ -347,7 +348,7 @@ func (d *DSH) killCurrent() {
 	if cmd == nil || cmd.Process == nil {
 		return
 	}
-	killProcess(cmd)
+	killProcessForce(cmd)
 }
 
 // NewDSH returns a supervisor. onReady is invoked with the authenticated
@@ -378,6 +379,10 @@ func (d *DSH) Start(ctx context.Context) error {
 			return nil
 		}
 		if !ready && attempt >= maxRestarts {
+			if lines := d.lastOutput(); lines != "" {
+				log.Printf("dsh exited repeatedly; last output:\n%s", lines)
+			}
+			d.report(recoverPrepProgress(d.config.Home, ""))
 			return errors.New("dsh exited repeatedly; giving up after " +
 				itoa(attempt) + " restarts")
 		}
@@ -427,6 +432,7 @@ func (d *DSH) launchOnce(ctx context.Context) (bool, error) {
 	sc.Buffer(make([]byte, 64*1024), 64*1024)
 	for sc.Scan() {
 		line := sc.Text()
+		d.noteOutput(line)
 		if ready {
 			continue
 		}
@@ -465,6 +471,22 @@ func (d *DSH) isClosed() bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.closed
+}
+
+func (d *DSH) noteOutput(line string) {
+	const max = 8
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.tail = append(d.tail, line)
+	if len(d.tail) > max {
+		d.tail = append([]string(nil), d.tail[len(d.tail)-max:]...)
+	}
+}
+
+func (d *DSH) lastOutput() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return strings.Join(d.tail, "\n")
 }
 
 func itoa(n int) string {

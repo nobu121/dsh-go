@@ -59,4 +59,7 @@ func TestHarnessInitJSIncludesThemeAndLinks(t *testing.T) {
 	if !strings.Contains(js, "__dshGoThemeWatch") || !strings.Contains(js, "__dshGoExtLinks") {
 		t.Fatal("harness init JS must include theme watch and external links")
 	}
+	if !strings.Contains(js, "__dshGoBootFail") {
+		t.Fatal("harness init JS must include boot-fail watch")
+	}
 }

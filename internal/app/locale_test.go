@@ -102,7 +102,7 @@ func TestPrepPageHasBothLanguages(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := string(b)
-	for _, want := range []string{"正在初始化", "发现新版本", "立即更新", "稍后", "Starting", "Update available", "Update now", "Later"} {
+	for _, want := range []string{"正在初始化", "发现新版本", "立即更新", "稍后", "无法启动", "Harness 插件加载失败", "禁用并重启", "仅重启", "查看报错", "收起报错", "Starting", "Update available", "Update now", "Later", "Could not start", "Harness failed to load plugins", "Disable and restart", "Restart only", "View error", "Hide error"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("prep page missing %q", want)
 		}

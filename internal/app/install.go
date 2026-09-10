@@ -26,7 +26,28 @@ func wantsUninstall(args []string) bool {
 }
 
 func skipSelfInstall() bool {
-	return !selfInstallEnabled || os.Getenv(skipSelfInstallEnv) != ""
+	if !selfInstallEnabled || os.Getenv(skipSelfInstallEnv) != "" {
+		return true
+	}
+	exe, err := currentExe()
+	return err == nil && exeInSourceTree(exe)
+}
+
+// exeInSourceTree reports a checkout build (e.g. repo/bin/dsh-go.exe) so a
+// production-tagged local binary cannot overwrite the installed copy.
+func exeInSourceTree(exe string) bool {
+	dir := filepath.Dir(exe)
+	for i := 0; i < 3; i++ {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return false
 }
 
 func installExePath() string {

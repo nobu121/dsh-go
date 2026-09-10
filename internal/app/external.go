@@ -113,6 +113,16 @@ func handleOpenExternalMessage(app *application.App, message string) {
 	}
 }
 
+func handleRawWebviewMessage(app *application.App, message string) {
+	if text, ok := parseBootFailMessage(message); ok {
+		if app != nil {
+			app.Event.Emit(bootFailEvent, text)
+		}
+		return
+	}
+	handleOpenExternalMessage(app, message)
+}
+
 func harnessInitJS() string {
-	return themeWatchJS + "\n" + externalLinkJS
+	return themeWatchJS + "\n" + externalLinkJS + "\n" + bootFailWatchJS
 }

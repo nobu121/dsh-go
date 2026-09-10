@@ -27,13 +27,6 @@ func runHidden(name string, args ...string) {
 	_ = cmd.Run()
 }
 
-func killProcess(cmd *exec.Cmd) {
-	if cmd.Process == nil {
-		return
-	}
-	runHidden("taskkill", "/T", "/PID", strconv.Itoa(cmd.Process.Pid))
-}
-
 func killProcessForce(cmd *exec.Cmd) {
 	if cmd.Process == nil {
 		return

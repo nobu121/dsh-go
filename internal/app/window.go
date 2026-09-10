@@ -55,6 +55,16 @@ func (s *shellWindows) current() *application.WebviewWindow {
 	return s.win
 }
 
+func (s *shellWindows) shouldReveal(harness *application.WebviewWindow) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return shouldRevealHarness(s.win, harness)
+}
+
+func shouldRevealHarness(current, harness *application.WebviewWindow) bool {
+	return current == harness
+}
+
 func (s *shellWindows) showHarness(dshURL string) *application.WebviewWindow {
 	s.mu.Lock()
 	if s.harness != nil {
@@ -94,6 +104,12 @@ func (s *shellWindows) showHarness(dshURL string) *application.WebviewWindow {
 	var finishes atomic.Int32
 	reveal := func() {
 		if !shown.CompareAndSwap(false, true) {
+			return
+		}
+		// Boot-fail recover (or any later showPrep) may have already taken
+		// the foreground. Do not pop the hidden harness over it.
+		if !s.shouldReveal(next) {
+			next.Hide()
 			return
 		}
 		next.Show()

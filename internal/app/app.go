@@ -40,6 +40,7 @@ func Run(assets embed.FS) {
 	}
 	initUserPATH()
 	loadStartupLocale()
+	purgeWebViewCookies(append([]string{webviewUserDataPath()}, legacyWebviewUserDataPaths()...)...)
 
 	ui := &shellWindows{}
 	var app *application.App
@@ -48,6 +49,9 @@ func Run(assets embed.FS) {
 		Description: "A Wails v3 desktop shell for DeepSeek Harness",
 		Assets: application.AssetOptions{
 			Handler: assetHandler(assets),
+		},
+		Windows: application.WindowsOptions{
+			WebviewUserDataPath: webviewUserDataPath(),
 		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: false,
@@ -63,7 +67,7 @@ func Run(assets embed.FS) {
 			},
 		},
 		RawMessageHandler: func(_ application.Window, message string, _ *application.OriginInfo) {
-			handleOpenExternalMessage(app, message)
+			handleRawWebviewMessage(app, message)
 		},
 	})
 	ui.app = app
@@ -100,7 +104,7 @@ func Run(assets embed.FS) {
 		OnPrep: func(p PrepProgress) {
 			prep.store(p)
 			switch p.Stage {
-			case "download", "unpack", "error", "update":
+			case "download", "unpack", "error", "update", prepRecoverStage:
 				app.Event.Emit(showPrepEvent)
 			}
 			app.Event.Emit(prepEvent, p)
@@ -150,9 +154,47 @@ func Run(assets embed.FS) {
 		}
 	}
 
+	presentRecover := func(blamed string) {
+		if _, _, ok := offer.pending(); ok {
+			return
+		}
+		ui.showPrep()
+		emitPrep(recoverPrepProgress(dsh.config.Home, blamed))
+	}
+
+	restartAfterRecover := func(names []string) {
+		if len(names) > 0 {
+			if err := disableProfileBundles(dsh.config.Home, names); err != nil {
+				log.Printf("disable plugins: %v", err)
+				p := recoverPrepProgress(dsh.config.Home, "")
+				p.Message = err.Error()
+				ui.showPrep()
+				emitPrep(p)
+				return
+			}
+		}
+		emitPrep(prepStartProgress())
+		if supervising.Load() {
+			log.Printf("dsh recover: restarting (disable=%v)", names)
+			dsh.killCurrent()
+			return
+		}
+		log.Printf("dsh recover: starting supervisor (disable=%v)", names)
+		go runSupervisor()
+	}
+
+	app.Event.On(bootFailEvent, func(e *application.CustomEvent) {
+		text, _ := e.Data.(string)
+		presentRecover(text)
+	})
+
 	app.Event.On(prepRetryEvent, func(*application.CustomEvent) {
 		if _, _, ok := offer.pending(); ok {
 			go applyAllUpdates(ctx, app, emitPrep, presentOffer, dsh, offer)
+			return
+		}
+		if p, ok := prep.last(); ok && p.Stage == prepRecoverStage {
+			restartAfterRecover(nil)
 			return
 		}
 		if url := dsh.LastURL(); url != "" && supervising.Load() {
@@ -177,11 +219,19 @@ func Run(assets embed.FS) {
 	}
 	go runDSHUpdateLoop(ctx, dsh, showDSHUpdate)
 
-	app.Event.On(prepApplyEvent, func(*application.CustomEvent) {
+	app.Event.On(prepApplyEvent, func(e *application.CustomEvent) {
+		if p, ok := prep.last(); ok && p.Stage == prepRecoverStage {
+			go restartAfterRecover(parseRecoverNames(e.Data))
+			return
+		}
 		go applyAllUpdates(ctx, app, emitPrep, presentOffer, dsh, offer)
 	})
 
 	app.Event.On(prepLaterEvent, func(*application.CustomEvent) {
+		if p, ok := prep.last(); ok && p.Stage == prepRecoverStage {
+			go restartAfterRecover(nil)
+			return
+		}
 		offer.proceed()
 		if url := dsh.LastURL(); url != "" {
 			app.Event.Emit(openHarnessEvent, url)

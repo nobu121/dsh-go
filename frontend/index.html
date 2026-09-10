@@ -39,6 +39,7 @@
     html, body { height: 100%; margin: 0; background: var(--bg); }
     main { height: 100%; display: grid; place-items: center; }
     .card { width: min(360px, calc(100vw - 48px)); text-align: center; }
+    .card.wide { width: min(420px, calc(100vw - 48px)); }
     .logo {
       width: 72px;
       height: 72px;
@@ -92,14 +93,54 @@
       border: 1px solid var(--bar); border-radius: 10px; overflow: hidden;
       text-align: left;
     }
+    .card.wide #items {
+      max-height: min(40vh, 280px);
+      overflow-x: hidden;
+      overflow-y: auto;
+    }
     #items li {
       display: grid; grid-template-columns: 1fr auto; gap: 12px;
       align-items: center; padding: 10px 12px;
     }
+    #items li.plugin {
+      grid-template-columns: auto 1fr auto;
+    }
+    #items li.plugin label {
+      display: contents;
+      cursor: pointer;
+    }
+    #items input[type="checkbox"] {
+      margin: 0;
+      accent-color: var(--fill);
+    }
     #items li + li { border-top: 1px solid var(--bar); }
-    #items .item-name { color: var(--fill); font: 600 13px/1.3 system-ui, sans-serif; }
-    #items .item-ver { color: var(--muted); font: 12px/1.3 system-ui, sans-serif; }
-    button[hidden], .bar[hidden], #msg[hidden], #status[hidden], #offer[hidden], #items[hidden], #ver[hidden] { display: none; }
+    #items .item-name { color: var(--fill); font: 600 13px/1.3 system-ui, sans-serif; overflow-wrap: anywhere; }
+    #items .item-ver {
+      color: var(--muted); font: 12px/1.3 system-ui, sans-serif;
+      max-width: 9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    button.text {
+      margin-top: 14px;
+      background: transparent;
+      color: var(--muted);
+      font-weight: 500;
+      padding: 4px 8px;
+    }
+    #error-detail {
+      margin: 12px 0 0;
+      max-height: min(28vh, 200px);
+      overflow: auto;
+      text-align: left;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      color: var(--fill);
+      background: transparent;
+      border: 1px solid var(--bar);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    button[hidden], .bar[hidden], #msg[hidden], #status[hidden], #offer[hidden], #items[hidden], #ver[hidden], #view-error[hidden], #error-detail[hidden] { display: none; }
   </style>
 </head>
 <body>
@@ -115,6 +156,8 @@
         <h1 id="offer-title">发现新版本</h1>
         <p id="offer-msg"></p>
         <ul id="items" hidden></ul>
+        <button id="view-error" type="button" class="text" hidden>查看报错</button>
+        <pre id="error-detail" hidden></pre>
         <div class="actions">
           <button id="apply" type="button">立即更新</button>
           <button id="later" type="button" class="secondary">稍后</button>
@@ -130,16 +173,28 @@
       zh: {
         init: "正在初始化",
         offerTitle: "发现新版本",
+        recoverTitle: "无法启动",
+        recoverFail: "Harness 插件加载失败",
         apply: "立即更新",
         later: "稍后",
+        disableRestart: "禁用并重启",
+        restartOnly: "仅重启",
+        viewError: "查看报错",
+        hideError: "收起报错",
         download: "正在下载",
         unpack: "正在安装",
       },
       en: {
         init: "Starting",
         offerTitle: "Update available",
+        recoverTitle: "Could not start",
+        recoverFail: "Harness failed to load plugins",
         apply: "Update now",
         later: "Later",
+        disableRestart: "Disable and restart",
+        restartOnly: "Restart only",
+        viewError: "View error",
+        hideError: "Hide error",
         download: "Downloading",
         unpack: "Installing",
       },
@@ -157,6 +212,14 @@
     const applyBtn = document.getElementById("apply");
     const later = document.getElementById("later");
     const ver = document.getElementById("ver");
+    const viewError = document.getElementById("view-error");
+    const errorDetail = document.getElementById("error-detail");
+    let recoverMode = false;
+
+    function viewErrorLabel(open) {
+      const c = copy();
+      return open ? c.hideError : c.viewError;
+    }
 
     function copy() {
       return COPY[document.documentElement.lang === "en" ? "en" : "zh"];
@@ -166,25 +229,54 @@
       const en = pref === "en";
       document.documentElement.lang = en ? "en" : "zh-CN";
       const c = copy();
-      offerTitle.textContent = c.offerTitle;
-      later.textContent = c.later;
-      if (!applyBtn.dataset.locked) applyBtn.textContent = c.apply;
+      if (recoverMode) {
+        offerTitle.textContent = c.recoverTitle;
+        offerMsg.textContent = c.recoverFail;
+        later.textContent = c.restartOnly;
+        if (applyBtn.dataset.locked) applyBtn.textContent = c.disableRestart;
+        viewError.textContent = viewErrorLabel(!errorDetail.hidden);
+      } else {
+        offerTitle.textContent = c.offerTitle;
+        later.textContent = c.later;
+        if (!applyBtn.dataset.locked) applyBtn.textContent = c.apply;
+      }
     }
 
-    function renderItems(items) {
+    function renderItems(items, selectable) {
       itemsEl.replaceChildren();
+      if (selectable) {
+        items = [...items].sort((a, b) => Number(Boolean(b.Selected ?? b.selected)) - Number(Boolean(a.Selected ?? a.selected)));
+      }
       for (const it of items) {
         const li = document.createElement("li");
         const name = document.createElement("span");
         name.className = "item-name";
-        name.textContent = it.Name ?? it.name ?? "";
+        const pkg = it.Name ?? it.name ?? "";
+        name.textContent = pkg;
         const itemVer = document.createElement("span");
         itemVer.className = "item-ver";
         const version = it.Version ?? it.version ?? "";
         itemVer.textContent = version ? "Version " + version : "";
-        li.append(name, itemVer);
+        if (selectable) {
+          li.className = "plugin";
+          const box = document.createElement("input");
+          box.type = "checkbox";
+          box.value = pkg;
+          box.checked = Boolean(it.Selected ?? it.selected);
+          const label = document.createElement("label");
+          label.append(box, name, itemVer);
+          li.append(label);
+        } else {
+          li.append(name, itemVer);
+        }
         itemsEl.append(li);
       }
+    }
+
+    function selectedPluginNames() {
+      return [...itemsEl.querySelectorAll("input[type=checkbox]:checked")]
+        .map((el) => el.value)
+        .filter(Boolean);
     }
 
     function setTheme(pref) {
@@ -202,21 +294,51 @@
       const version = p.Version ?? p.version ?? "";
       const err = stage === "error";
       const isOffer = stage === "offer";
+      const isRecover = stage === "recover";
+      recoverMode = isRecover;
       const labels = { download: c.download, unpack: c.unpack };
       const hasProgress = Boolean(labels[stage]) && total > 0;
+      const card = document.querySelector(".card");
+      if (card) card.classList.toggle("wide", isRecover);
 
-      offer.hidden = !isOffer;
-      status.hidden = isOffer;
+      offer.hidden = !isOffer && !isRecover;
+      status.hidden = isOffer || isRecover;
       retry.hidden = !err;
+      if (isRecover) {
+        const items = p.Items ?? p.items ?? [];
+        offerTitle.textContent = c.recoverTitle;
+        offerMsg.textContent = text || c.recoverFail;
+        offerMsg.hidden = false;
+        applyBtn.textContent = action || c.disableRestart;
+        applyBtn.dataset.locked = "1";
+        applyBtn.hidden = items.length === 0;
+        later.textContent = c.restartOnly;
+        itemsEl.hidden = items.length === 0;
+        if (items.length) renderItems(items, true);
+        const detail = (p.Detail ?? p.detail ?? "").trim();
+        errorDetail.textContent = detail;
+        errorDetail.hidden = true;
+        viewError.hidden = !detail;
+        viewError.textContent = c.viewError;
+        ver.hidden = true;
+        ver.textContent = "";
+        return;
+      }
+      viewError.hidden = true;
+      errorDetail.hidden = true;
+      errorDetail.textContent = "";
       if (isOffer) {
         const items = p.Items ?? p.items ?? [];
         const many = items.length > 1;
+        offerTitle.textContent = c.offerTitle;
+        later.textContent = c.later;
         offerMsg.textContent = text;
+        offerMsg.hidden = !text;
         applyBtn.textContent = action;
         applyBtn.dataset.locked = "1";
         applyBtn.hidden = false;
         itemsEl.hidden = !many;
-        if (many) renderItems(items);
+        if (many) renderItems(items, false);
         ver.hidden = many || !version;
         ver.textContent = !many && version ? "Version " + version : "";
         return;
@@ -254,8 +376,19 @@
       apply({});
       Events.Emit("dsh-go:prep-retry");
     });
-    applyBtn.addEventListener("click", () => Events.Emit("dsh-go:prep-apply"));
+    applyBtn.addEventListener("click", () => {
+      if (recoverMode) {
+        Events.Emit("dsh-go:prep-apply", selectedPluginNames().join("\n"));
+        return;
+      }
+      Events.Emit("dsh-go:prep-apply");
+    });
     later.addEventListener("click", () => Events.Emit("dsh-go:prep-later"));
+    viewError.addEventListener("click", () => {
+      const open = errorDetail.hidden;
+      errorDetail.hidden = !open;
+      viewError.textContent = viewErrorLabel(open);
+    });
     Events.Emit("dsh-go:prep-ready");
   </script>
 </body>

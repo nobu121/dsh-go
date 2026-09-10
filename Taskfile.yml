@@ -18,6 +18,11 @@ tasks:
     summary: Builds the application for the host OS
     cmds:
       - task: "{{.GOOS}}:build"
+        vars:
+          DEV: '{{.DEV}}'
+          UPDATE_REPO: '{{.UPDATE_REPO}}'
+          RUNTIME_BASE_URL: '{{.RUNTIME_BASE_URL}}'
+          APP_VERSION: '{{.APP_VERSION}}'
 
   package:
     summary: Packages a production build for the host OS
