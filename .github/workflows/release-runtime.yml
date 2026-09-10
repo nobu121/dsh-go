@@ -40,6 +40,10 @@ jobs:
             artifact: darwin-arm64
           - os: windows-latest
             artifact: windows-amd64
+          # Official Node linux-x64 (glibc). Named wsl: the Windows client
+          # installs this into WSL. Not Alpine/musl; not aarch64.
+          - os: ubuntu-latest
+            artifact: wsl-amd64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

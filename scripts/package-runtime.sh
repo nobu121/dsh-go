@@ -10,7 +10,7 @@ os="$(uname -s)"
 arch="$(uname -m)"
 case "$os" in
   Darwin) goos=darwin ;;
-  Linux) goos=linux ;;
+  Linux) goos=wsl ;;
   MINGW*|MSYS*|CYGWIN*|Windows_NT) goos=windows ;;
   *) echo "unsupported OS: $os" >&2; exit 1 ;;
 esac
