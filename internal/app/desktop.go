@@ -163,15 +163,18 @@ func downloadReleaseAsset(ctx context.Context, base, asset, dest string, onPrep 
 	return nil
 }
 
-// desktopUpdateScript replaces the running Windows exe after it exits, then
-// relaunches it. (goto) 2>nul lets the .cmd delete itself without leaving a
-// visible "找不到批处理文件" console.
+// desktopUpdateScript force-kills the running Windows exe, swaps in the
+// downloaded copy, then relaunches. Renaming a running exe succeeds on
+// Windows, so "wait until move works then start" races the old process
+// (Quit can hang) and the new instance exits as a duplicate. (goto) 2>nul
+// lets the .cmd delete itself without a "找不到批处理文件" console.
 func desktopUpdateScript(current, src string) string {
 	return fmt.Sprintf(""+
 		"@echo off\r\n"+
 		"set \"CUR=%s\"\r\n"+
 		"set \"NEW=%s\"\r\n"+
-		"for /l %%%%i in (1,1,30) do (\r\n"+
+		"taskkill /F /IM dsh-go.exe >nul 2>nul\r\n"+
+		"for /l %%%%i in (1,1,20) do (\r\n"+
 		"  move /y \"%%CUR%%\" \"%%CUR%%.old\" >nul 2>nul && goto replaced\r\n"+
 		"  ping -n 2 127.0.0.1 >nul\r\n"+
 		")\r\n"+

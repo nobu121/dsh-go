@@ -38,7 +38,8 @@ func installDesktopPackage(path string) (bool, error) {
 	if err := os.WriteFile(script, []byte(desktopUpdateScript(current, src)), 0o644); err != nil {
 		return false, err
 	}
-	cmd := exec.Command("cmd", "/C", script)
+	// Detach so taskkill /IM dsh-go.exe in the script cannot kill the updater.
+	cmd := exec.Command("cmd", "/C", "start", "", "/B", script)
 	cmd.SysProcAttr = hiddenProcAttr(0)
 	return true, cmd.Start()
 }

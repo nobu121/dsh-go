@@ -118,6 +118,9 @@ func TestDesktopUpdateScriptDeletesItselfQuietly(t *testing.T) {
 	if strings.Contains(s, "\ndel \"%") || strings.Contains(s, "\r\ndel \"%") {
 		t.Fatal("bare del of the running script opens a console with 找不到批处理文件")
 	}
+	if !strings.Contains(s, `taskkill /F /IM dsh-go.exe`) {
+		t.Fatal("must kill the old process; renaming a running exe is not enough")
+	}
 }
 
 func TestAppBundlePath(t *testing.T) {
