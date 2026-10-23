@@ -7,6 +7,7 @@ A **4 MB** native window for [DeepSeek Harness](https://github.com/deepseek-ai/d
 **Download**
 
 - macOS (Apple Silicon) — [`.dmg`](https://github.com/nobu121/dsh-go/releases/latest/download/dsh-go-darwin-arm64.dmg)
+- macOS (Intel) — [`.dmg`](https://github.com/nobu121/dsh-go/releases/latest/download/dsh-go-darwin-amd64.dmg)
 - Windows (x64) — self-installing [`.zip`](https://github.com/nobu121/dsh-go/releases/latest/download/dsh-go-windows-amd64.zip)
 
 Checksums: [GitHub Releases](https://github.com/nobu121/dsh-go/releases/latest) · [CNB](https://cnb.cool/nobu121/dsh-go/-/releases)

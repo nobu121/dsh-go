@@ -7,6 +7,7 @@
 **下载**
 
 - macOS（Apple Silicon）— [`.dmg`](https://github.com/nobu121/dsh-go/releases/latest/download/dsh-go-darwin-arm64.dmg)
+- macOS（Intel）— [`.dmg`](https://github.com/nobu121/dsh-go/releases/latest/download/dsh-go-darwin-amd64.dmg)
 - Windows（x64）— 自安装 [`.zip`](https://github.com/nobu121/dsh-go/releases/latest/download/dsh-go-windows-amd64.zip)
 
 校验和：[GitHub Releases](https://github.com/nobu121/dsh-go/releases/latest) · [CNB](https://cnb.cool/nobu121/dsh-go/-/releases)

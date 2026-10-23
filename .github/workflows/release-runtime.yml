@@ -38,6 +38,9 @@ jobs:
         include:
           - os: macos-14
             artifact: darwin-arm64
+          # Built natively so the smoke test runs the x64 Node.
+          - os: macos-15-intel
+            artifact: darwin-amd64
           - os: windows-latest
             artifact: windows-amd64
           # Official Node linux-x64 (glibc). Named wsl: the Windows client

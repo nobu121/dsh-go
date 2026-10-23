@@ -47,6 +47,10 @@ jobs:
           - os: macos-14
             artifact: darwin-arm64
             path: bin/dsh-go-darwin-arm64.dmg
+          # Intel Mac. macos-15-intel is GitHub's last x86_64 macOS image.
+          - os: macos-15-intel
+            artifact: darwin-amd64
+            path: bin/dsh-go-darwin-amd64.dmg
           - os: windows-latest
             artifact: windows-amd64
             path: bin/dsh-go-windows-amd64.zip
@@ -111,7 +115,7 @@ jobs:
             ver="$(tr -d '[:space:]' < app.version)"
           fi
           tag="v${ver}"
-          notes="dsh-go client ${ver}: macOS DMG and Windows zip. The dsh runtime updates on its own from the runtime-latest channel."
+          notes="dsh-go client ${ver}: macOS DMGs (Apple Silicon, Intel) and Windows zip. The dsh runtime updates on its own from the runtime-latest channel."
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release edit "$tag" --prerelease=false --latest --notes "$notes"
             gh release upload "$tag" dist/dsh-go-* dist/SHA256SUMS --clobber
